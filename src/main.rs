@@ -33,7 +33,7 @@ struct PsybeamLib {
     network: NetworkLib,
     time: TimeLib,
 
-    spacer: Rc<dyn espy::ExternOwned>,
+    spacer: SpacerWidget,
 }
 
 impl espy::Extern for PsybeamLib {
@@ -53,7 +53,7 @@ impl espy::Extern for PsybeamLib {
             "time" => Ok(espy::Value::borrow(&self.time)),
 
             "command" => Ok(espy::Function::borrow(&COMMAND).into()),
-            "spacer" => Ok(espy::Value::owned(self.spacer.clone())),
+            "spacer" => Ok(espy::Value::borrow(&self.spacer)),
             _ => Err(espy::Error::IndexNotFound {
                 index: index.into(),
                 container: espy::Value::borrow(self),
@@ -254,21 +254,27 @@ impl espy::Extern for TimeLib {
 
 struct SpacerWidget;
 
-impl espy::ExternOwned for SpacerWidget {
+impl espy::Extern for SpacerWidget {
     fn index<'host>(
-        &self,
-        _index: espy::Value<'host>,
+        &'host self,
+        index: espy::Value<'host>,
     ) -> Result<espy::Value<'host>, espy::Error<'host>> {
-        Err(espy::Error::Other("spacer widget has no fields".into()))
+        Err(espy::Error::IndexNotFound {
+            index,
+            container: espy::Value::borrow(self),
+        })
+    }
+
+    fn any(&self) -> Option<&dyn std::any::Any> {
+        Some(self)
     }
 
     fn debug(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        std::write!(f, "{{external value}}")
+        std::write!(f, "psybeam.spacer widget")
     }
 }
 
 fn main() -> anyhow::Result<()> {
-    let spacer: Rc<dyn espy::ExternOwned> = Rc::new(SpacerWidget);
     let libs = Libs {
         std: espystandard::StdLib,
         psybeam: PsybeamLib {
@@ -279,7 +285,7 @@ fn main() -> anyhow::Result<()> {
             network: NetworkLib,
             time: TimeLib,
 
-            spacer: spacer.clone(),
+            spacer: SpacerWidget,
         },
     };
 
@@ -295,9 +301,7 @@ fn main() -> anyhow::Result<()> {
             .into_tuple()
             .unwrap();
         for widget in layout.values() {
-            if let espy::Value::Owned(widget) = widget
-                && Rc::ptr_eq(widget, &spacer)
-            {
+            if widget.downcast_extern::<SpacerWidget>().is_some() {
                 print!("<--> ")
             } else {
                 let draw = widget.clone().into_function().unwrap();
