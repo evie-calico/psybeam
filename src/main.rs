@@ -25,16 +25,7 @@ impl espy::Extern for Libs {
     }
 }
 
-struct PsybeamLib {
-    battery: BatteryLib,
-    color: ColorLib,
-    cpu: CpuLib,
-    memory: MemoryLib,
-    network: NetworkLib,
-    time: TimeLib,
-
-    spacer: SpacerWidget,
-}
+struct PsybeamLib;
 
 impl espy::Extern for PsybeamLib {
     fn index<'host>(
@@ -42,18 +33,14 @@ impl espy::Extern for PsybeamLib {
         index: espy::Value<'host>,
     ) -> Result<espy::Value<'host>, espy::Error<'host>> {
         static COMMAND: PsybeamCommandFn = PsybeamCommandFn;
+        static COLOR: ColorLib = ColorLib;
+        static SPACER: SpacerWidget = SpacerWidget;
 
         let index = index.into_str()?;
         match &*index {
-            "battery" => Ok(espy::Value::borrow(&self.battery)),
-            "color" => Ok(espy::Value::borrow(&self.color)),
-            "cpu" => Ok(espy::Value::borrow(&self.cpu)),
-            "memory" => Ok(espy::Value::borrow(&self.memory)),
-            "network" => Ok(espy::Value::borrow(&self.network)),
-            "time" => Ok(espy::Value::borrow(&self.time)),
-
+            "color" => Ok(espy::Value::borrow(&COLOR)),
             "command" => Ok(espy::Function::borrow(&COMMAND).into()),
-            "spacer" => Ok(espy::Value::borrow(&self.spacer)),
+            "spacer" => Ok(espy::Value::borrow(&SPACER)),
             _ => Err(espy::Error::IndexNotFound {
                 index: index.into(),
                 container: espy::Value::borrow(self),
@@ -100,26 +87,6 @@ impl espy::ExternFn for PsybeamCommandFn {
 
     fn debug(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         std::write!(f, "psybeam.command function")
-    }
-}
-
-struct BatteryLib;
-
-impl espy::Extern for BatteryLib {
-    fn index<'host>(
-        &'host self,
-        index: espy::Value<'host>,
-    ) -> Result<espy::Value<'host>, espy::Error<'host>> {
-        let index = index.into_str()?;
-        match &*index {
-            _ => Err(espy::Error::IndexNotFound {
-                index: index.into(),
-                container: espy::Value::borrow(self),
-            }),
-        }
-    }
-    fn debug(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "battery module")
     }
 }
 
@@ -171,87 +138,6 @@ impl espy::ExternFn for ColorHexFn {
     }
 }
 
-struct CpuLib;
-
-impl espy::Extern for CpuLib {
-    fn index<'host>(
-        &'host self,
-        index: espy::Value<'host>,
-    ) -> Result<espy::Value<'host>, espy::Error<'host>> {
-        let index = index.into_str()?;
-        match &*index {
-            _ => Err(espy::Error::IndexNotFound {
-                index: index.into(),
-                container: espy::Value::borrow(self),
-            }),
-        }
-    }
-    fn debug(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "cpu module")
-    }
-}
-
-struct MemoryLib;
-
-impl espy::Extern for MemoryLib {
-    fn index<'host>(
-        &'host self,
-        index: espy::Value<'host>,
-    ) -> Result<espy::Value<'host>, espy::Error<'host>> {
-        let index = index.into_str()?;
-        match &*index {
-            _ => Err(espy::Error::IndexNotFound {
-                index: index.into(),
-                container: espy::Value::borrow(self),
-            }),
-        }
-    }
-    fn debug(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "memory module")
-    }
-}
-
-struct NetworkLib;
-
-impl espy::Extern for NetworkLib {
-    fn index<'host>(
-        &'host self,
-        index: espy::Value<'host>,
-    ) -> Result<espy::Value<'host>, espy::Error<'host>> {
-        let index = index.into_str()?;
-        match &*index {
-            _ => Err(espy::Error::IndexNotFound {
-                index: index.into(),
-                container: espy::Value::borrow(self),
-            }),
-        }
-    }
-    fn debug(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "network module")
-    }
-}
-
-struct TimeLib;
-
-impl espy::Extern for TimeLib {
-    fn index<'host>(
-        &'host self,
-        index: espy::Value<'host>,
-    ) -> Result<espy::Value<'host>, espy::Error<'host>> {
-        let index = index.into_str()?;
-        match &*index {
-            _ => Err(espy::Error::IndexNotFound {
-                index: index.into(),
-                container: espy::Value::borrow(self),
-            }),
-        }
-    }
-
-    fn debug(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "time module")
-    }
-}
-
 struct SpacerWidget;
 
 impl espy::Extern for SpacerWidget {
@@ -277,16 +163,7 @@ impl espy::Extern for SpacerWidget {
 fn main() -> anyhow::Result<()> {
     let libs = Libs {
         std: espystandard::StdLib,
-        psybeam: PsybeamLib {
-            battery: BatteryLib,
-            color: ColorLib,
-            cpu: CpuLib,
-            memory: MemoryLib,
-            network: NetworkLib,
-            time: TimeLib,
-
-            spacer: SpacerWidget,
-        },
+        psybeam: PsybeamLib,
     };
 
     for arg in env::args().skip(1) {
