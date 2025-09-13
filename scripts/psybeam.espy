@@ -1,0 +1,141 @@
+with { std, psybeam };
+
+let network = {
+	let { command, color } = psybeam;
+	let { string, iter, option } = std;
+
+	with _widget;
+
+	# TODO: attempt other known network manager commands.
+	let output = command "iwgetid", "--raw";
+	let name = if output.status == 0 then
+		# This is entirely to trim the trailing newline
+		# TODO: string.trim?
+		output.stdout
+			|> string.split "\n"
+			|> iter.reduce_once ()
+			|> option.unwrap ()
+	else then
+		"?"
+	end;
+
+	text: (string.concat name, " "),
+	color: (color.hex "#0000FF")
+};
+
+let cpu = {
+	let { command, color } = psybeam;
+	let { string, iter, option } = std;
+
+	with _widget;
+
+	let stat = (command "cat", "/proc/stat").stdout;
+	let present_cpus = (command "cat", "/sys/devices/system/cpu/present").stdout;
+	# TODO: needs split. first line is total timings, 4th number is idle time.
+	let timings = stat
+		|> string.split "\n"
+		|> iter.reduce_once ()
+		|> option.unwrap()
+		|> string.split_whitespace ()
+		|> iter.skip 1;
+	let idle = timings
+		|> iter.skip 3
+		|> iter.reduce_once ()
+		|> option.unwrap();
+	let total = timings
+		|> iter.fold "0", {
+			# TODO: parse into floats and then add, don't concat
+			let string = string;
+			with (a, x);
+			string.concat a, x
+		};
+	let usage = string.concat idle, "/", total;
+	# TODO: this is a comma-seperated list of minus-separated ranges of cpus. count them.
+	# let cores = present_cpus;
+
+	text: (string.concat usage, "% cpu"),
+	color: (color.hex "#00FF00")
+};
+
+let memory = {
+	let { command, color } = psybeam;
+	let { string, iter, typeof } = std;
+
+	with _widget;
+
+	let meminfo = (command "cat", "/proc/meminfo").stdout;
+	# TODO: expose string type!!!
+	let OptionString = option (typeof "string");
+	# TODO: use filter/find instead of fold.
+	let { available, total } = meminfo
+		|> string.split "\n"
+		|> iter.fold (available: OptionString.None, total: OptionString.None), {
+			let string = string;
+			let iter = iter;
+			let OptionString = OptionString;
+			with ({ available, total }, line);
+
+			# TODO: this could be better expressed as iter.next
+			let label = string.split_whitespace line |> iter.reduce_once ();
+			let value = string.split_whitespace line |> iter.skip 1 |> iter.reduce_once();
+
+			# TODO: String comparison is not implemented.
+			# if label == (OptionString.Some "MemTotal:") then
+			# 	available: available, total: value
+			# else if label == (OptionString.Some "MemAvailable:") then
+			# 	available: value, total: total
+			# else then
+			# 	available: available, total: total
+			# end
+			available: "TODO", total: "TODO"
+		};
+
+	text: (string.concat available, "/", total, " memory"),
+	color: (color.hex "#FFFFFF")
+};
+
+let battery = {
+	let { command, color } = psybeam;
+	let { string, iter, option } = std;
+
+	with _widget;
+
+	let property = {
+		# run `ls /sys/class/power_supply` to see possible batteries.
+		let battery = "BAT0";
+		let string = string;
+		with property;
+		string.concat "/sys/class/power_supply/", battery, "/", property
+	};
+	let capacity = (command "cat", (property "capacity"))
+		.stdout
+		|> string.split "\n"
+		|> iter.reduce_once ()
+		|> option.unwrap ();
+	let status = (command "cat", (property "status"))
+		.stdout
+		|> string.split "\n"
+		|> iter.reduce_once ()
+		|> option.unwrap ();
+
+	text: (string.concat capacity, "% ", status),
+	color: (color.hex "#FF0000")
+};
+
+let clock = {
+	let { command, color } = psybeam;
+	let { string } = std;
+
+	with _widget;
+
+	let time = (command "date", "+%H:%M").stdout;
+	
+	text: time,
+	color: (color.hex "#FF0000")
+};
+
+network,
+	psybeam.spacer,
+cpu, memory, battery,
+	psybeam.spacer,
+clock

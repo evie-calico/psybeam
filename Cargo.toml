@@ -1,0 +1,9 @@
+[package]
+name = "psybeam"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+anyhow = "1.0.99"
+espy = { git = "ssh://git@github.com/evie-calico/espy", version = "0.1.0" }
+espystandard = { git = "ssh://git@github.com/evie-calico/espy", version = "0.1.0" }
