@@ -1,31 +1,46 @@
 with { std, psybeam };
 
-let network = {
-	let { command, color } = psybeam;
-	let { string, iter, option } = std;
+let palette = {
+	let color = psybeam.color.hex;
 
-	with _widget;
+	blue: (color "#0000FF"),
+	green: (color "#00FF00"),
+	white: (color "#FFFFFF"),
+	pink: (color "#FF8080"),
+	red: (color "#FF0000")
+};
+
+let network = {
+	# TODO: rename this to `Option` to avoid the conflict with the `option` lib.
+	let OptionString = option (std.typeof "string");
+	let { string, iter, option } = std;
+	let { command, label_color } = psybeam;
+	let palette = palette;
+
+	with widget;
 
 	# TODO: attempt other known network manager commands.
 	let output = command "iwgetid", "--raw";
-	let name = if output.status == 0 then
-		# This is entirely to trim the trailing newline
+	# This doesn't check the exit code because
+	# empty stdout works instead.
+	let name = output.stdout
+		# This is entirely to trim a single trailing newline
 		# TODO: string.trim?
-		output.stdout
-			|> string.split "\n"
-			|> iter.reduce_once ()
-			|> option.unwrap ()
-	else then
-		"?"
-	end;
+		|> string.split "\n"
+		|> iter.reduce_once ()
+		# TODO: unwrap_or ""?
+		|> option.unwrap ();
+	# TODO: string comparison
+	# let text = if name == "" then "?" else then name end;
 
-	text: (string.concat name, " "),
-	color: (color.hex "#0000FF")
+	string.concat name, " "
+		|> label_color palette.blue
 };
 
 let cpu = {
-	let { command, color } = psybeam;
+	let { command, label_color } = psybeam;
 	let { string, iter, option } = std;
+	let palette = palette;
 
 	with _widget;
 
@@ -53,13 +68,14 @@ let cpu = {
 	# TODO: this is a comma-seperated list of minus-separated ranges of cpus. count them.
 	# let cores = present_cpus;
 
-	text: (string.concat usage, "% cpu"),
-	color: (color.hex "#00FF00")
+	string.concat usage, "% cpu"
+		|> label_color palette.green
 };
 
 let memory = {
-	let { command, color } = psybeam;
+	let { command, label_color } = psybeam;
 	let { string, iter, typeof } = std;
+	let palette = palette;
 
 	with _widget;
 
@@ -90,13 +106,14 @@ let memory = {
 			available: "TODO", total: "TODO"
 		};
 
-	text: (string.concat available, "/", total, " memory"),
-	color: (color.hex "#FFFFFF")
+	string.concat available, "/", total, " memory"
+		|> label_color palette.white
 };
 
 let battery = {
-	let { command, color } = psybeam;
+	let { command, label_color } = psybeam;
 	let { string, iter, option } = std;
+	let palette = palette;
 
 	with _widget;
 
@@ -118,20 +135,22 @@ let battery = {
 		|> iter.reduce_once ()
 		|> option.unwrap ();
 
-	text: (string.concat capacity, "% ", status),
-	color: (color.hex "#FF0000")
+	string.concat capacity, "% ", status
+		|> label_color palette.pink
 };
 
 let clock = {
-	let { command, color } = psybeam;
-	let { string } = std;
+	let { command, label_color } = psybeam;
+	let { iter, string, option } = std;
+	let palette = palette;
 
 	with _widget;
 
-	let time = (command "date", "+%H:%M").stdout;
-	
-	text: time,
-	color: (color.hex "#FF0000")
+	(command "date", "+%H:%M").stdout
+		|> string.split "\n"
+		|> iter.reduce_once ()
+		|> option.unwrap()
+		|> label_color palette.red
 };
 
 network,

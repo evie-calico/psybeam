@@ -32,14 +32,16 @@ impl espy::Extern for PsybeamLib {
         &'host self,
         index: espy::Value<'host>,
     ) -> Result<espy::Value<'host>, espy::Error<'host>> {
-        static COMMAND: PsybeamCommandFn = PsybeamCommandFn;
+        static COMMAND: CommandFn = CommandFn;
         static COLOR: ColorLib = ColorLib;
+        static LABEL_COLOR: LabelColorFn = LabelColorFn;
         static SPACER: SpacerWidget = SpacerWidget;
 
         let index = index.into_str()?;
         match &*index {
             "color" => Ok(espy::Value::borrow(&COLOR)),
             "command" => Ok(espy::Function::borrow(&COMMAND).into()),
+            "label_color" => Ok(espy::Function::borrow(&LABEL_COLOR).into()),
             "spacer" => Ok(espy::Value::borrow(&SPACER)),
             _ => Err(espy::Error::IndexNotFound {
                 index: index.into(),
@@ -52,9 +54,9 @@ impl espy::Extern for PsybeamLib {
     }
 }
 
-struct PsybeamCommandFn;
+struct CommandFn;
 
-impl espy::ExternFn for PsybeamCommandFn {
+impl espy::ExternFn for CommandFn {
     fn call<'host>(
         &'host self,
         argument: espy::Value<'host>,
@@ -160,6 +162,60 @@ impl espy::Extern for SpacerWidget {
     }
 }
 
+#[derive(Debug)]
+struct LabelColorFn;
+
+impl espy::ExternFn for LabelColorFn {
+    fn call<'host>(
+        &'host self,
+        argument: espy::Value<'host>,
+    ) -> Result<espy::Value<'host>, espy::Error<'host>> {
+        let text = argument.get(0)?.into_str()?;
+        let [red, green, blue, alpha] = (argument.get(1)?.into_i64()? as u32).to_be_bytes();
+        Ok(espy::Value::owned(Rc::new(Label {
+            text,
+            red,
+            green,
+            blue,
+            alpha,
+        })))
+    }
+
+    fn debug(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        std::write!(f, "{self:?}")
+    }
+}
+
+#[derive(Debug)]
+struct Label {
+    text: Rc<str>,
+
+    red: u8,
+    green: u8,
+    blue: u8,
+    alpha: u8,
+}
+
+impl espy::ExternOwned for Label {
+    fn index<'host>(
+        self: Rc<Self>,
+        index: espy::Value<'host>,
+    ) -> Result<espy::Value<'host>, espy::Error<'host>> {
+        Err(espy::Error::IndexNotFound {
+            index,
+            container: espy::Value::Owned(self),
+        })
+    }
+
+    fn any(&self) -> Option<&dyn std::any::Any> {
+        Some(self)
+    }
+
+    fn debug(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{self:?}")
+    }
+}
+
 fn main() -> anyhow::Result<()> {
     let libs = Libs {
         std: espystandard::StdLib,
@@ -181,16 +237,25 @@ fn main() -> anyhow::Result<()> {
             if widget.downcast_extern::<SpacerWidget>().is_some() {
                 print!("<--> ")
             } else {
-                let draw = widget.clone().into_function().unwrap();
-                let info = draw.eval().unwrap();
-                let text = info.find("text".into()).unwrap().into_str().unwrap();
-                let color = u32::try_from(info.find("color".into()).unwrap().into_i64().unwrap())?;
-                print!(
-                    "\x1B[38;2;{};{};{}m{text}\x1B[0m ",
-                    (color >> 24) & 0xFF,
-                    (color >> 16) & 0xFF,
-                    (color >> 8) & 0xFF,
-                );
+                let draw = |instruction: &espy::Value| {
+                    if let Some(Label {
+                        text,
+                        red,
+                        green,
+                        blue,
+                        alpha: _,
+                    }) = instruction.downcast_extern()
+                    {
+                        print!("\x1B[38;2;{red};{green};{blue}m{text}\x1B[0m ",);
+                    } else {
+                        eprintln!("unrecognized drawing instruction: {instruction:?}");
+                    }
+                };
+                let instruction = widget.clone().into_function().unwrap().eval().unwrap();
+                match instruction {
+                    espy::Value::Tuple(instructions) => instructions.values().for_each(draw),
+                    _ => draw(&instruction),
+                }
             }
         }
         println!();
