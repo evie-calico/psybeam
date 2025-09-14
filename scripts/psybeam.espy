@@ -1,5 +1,11 @@
 with { std, psybeam };
 
+let read_file = {
+	let { command } = psybeam;
+	with path;
+	(command "cat", path).stdout
+};
+
 let palette = {
 	let color = psybeam.color.hex;
 
@@ -9,6 +15,8 @@ let palette = {
 	pink: (color "#FF8080"),
 	red: (color "#FF0000")
 };
+
+# Widgets
 
 let network = {
 	# TODO: rename this to `Option` to avoid the conflict with the `option` lib.
@@ -23,13 +31,7 @@ let network = {
 	let output = command "iwgetid", "--raw";
 	# This doesn't check the exit code because
 	# empty stdout works instead.
-	let name = output.stdout
-		# This is entirely to trim a single trailing newline
-		# TODO: string.trim?
-		|> string.split "\n"
-		|> iter.reduce_once ()
-		# TODO: unwrap_or ""?
-		|> option.unwrap ();
+	let name = string.trim_whitespace output.stdout;
 	# TODO: string comparison
 	# let text = if name == "" then "?" else then name end;
 
@@ -41,12 +43,13 @@ let cpu = {
 	let { command, label_color } = psybeam;
 	let { string, iter, option } = std;
 	let palette = palette;
+	let read_file = read_file;
 
 	with _widget;
 
-	let stat = (command "cat", "/proc/stat").stdout;
-	let present_cpus = (command "cat", "/sys/devices/system/cpu/present").stdout;
-	# TODO: needs split. first line is total timings, 4th number is idle time.
+	let stat = read_file "/proc/stat";
+	let present_cpus = read_file "/sys/devices/system/cpu/present";
+	# TODO: This conceptually works but only displays uptime. deltas are necessary for recent usage
 	let timings = stat
 		|> string.split "\n"
 		|> iter.reduce_once ()
@@ -56,15 +59,21 @@ let cpu = {
 	let idle = timings
 		|> iter.skip 3
 		|> iter.reduce_once ()
+		|> option.unwrap()
+		|> string.parse_i64 ()
 		|> option.unwrap();
 	let total = timings
-		|> iter.fold "0", {
-			# TODO: parse into floats and then add, don't concat
+		|> iter.map {
 			let string = string;
+			let option = option;
+			with i;
+			string.parse_i64 i |> option.unwrap()
+		}
+		|> iter.fold 0, {
 			with (a, x);
-			string.concat a, x
+			a + x
 		};
-	let usage = string.concat idle, "/", total;
+	let usage = string.from_i64 (total - idle) * 100 / total;
 	# TODO: this is a comma-seperated list of minus-separated ranges of cpus. count them.
 	# let cores = present_cpus;
 
@@ -74,14 +83,15 @@ let cpu = {
 
 let memory = {
 	let { command, label_color } = psybeam;
-	let { string, iter, typeof } = std;
+	let { string, iter } = std;
 	let palette = palette;
+	let read_file = read_file;
+	# TODO: expose string type!!!
+	let OptionString = option (std.typeof "string");
 
 	with _widget;
 
-	let meminfo = (command "cat", "/proc/meminfo").stdout;
-	# TODO: expose string type!!!
-	let OptionString = option (typeof "string");
+	let meminfo = read_file "/proc/meminfo";
 	# TODO: use filter/find instead of fold.
 	let { available, total } = meminfo
 		|> string.split "\n"
@@ -114,6 +124,7 @@ let battery = {
 	let { command, label_color } = psybeam;
 	let { string, iter, option } = std;
 	let palette = palette;
+	let read_file = read_file;
 
 	with _widget;
 
@@ -124,16 +135,10 @@ let battery = {
 		with property;
 		string.concat "/sys/class/power_supply/", battery, "/", property
 	};
-	let capacity = (command "cat", (property "capacity"))
-		.stdout
-		|> string.split "\n"
-		|> iter.reduce_once ()
-		|> option.unwrap ();
-	let status = (command "cat", (property "status"))
-		.stdout
-		|> string.split "\n"
-		|> iter.reduce_once ()
-		|> option.unwrap ();
+	let capacity = read_file (property "capacity")
+		|> string.trim_whitespace ();
+	let status = read_file (property "status")
+		|> string.trim_whitespace ();
 
 	string.concat capacity, "% ", status
 		|> label_color palette.pink
@@ -147,9 +152,7 @@ let clock = {
 	with _widget;
 
 	(command "date", "+%H:%M").stdout
-		|> string.split "\n"
-		|> iter.reduce_once ()
-		|> option.unwrap()
+		|> string.trim_whitespace ()
 		|> label_color palette.red
 };
 
