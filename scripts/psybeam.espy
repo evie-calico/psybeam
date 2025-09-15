@@ -25,21 +25,24 @@ let network = {
 	let { command, label_color } = psybeam;
 	let palette = palette;
 
-	with widget;
+	with _widget;
 
 	# TODO: attempt other known network manager commands.
 	let output = command "iwgetid", "--raw";
 	# This doesn't check the exit code because
 	# empty stdout works instead.
 	let name = string.trim_whitespace output.stdout;
-	# TODO: string comparison
-	# let text = if name == "" then "?" else then name end;
+	let text = if name != "" then
+		string.concat name, " "
+	else then
+		string.concat "? (error ", (string.from_i64 output.status), ")"
+	end;
 
-	string.concat name, " "
-		|> label_color palette.blue
+	label_color text, palette.blue
 };
 
 let cpu = {
+	let OptionI64 = option i64;
 	let { command, label_color } = psybeam;
 	let { string, iter, option } = std;
 	let palette = palette;
@@ -48,7 +51,6 @@ let cpu = {
 	with _widget;
 
 	let stat = read_file "/proc/stat";
-	let present_cpus = read_file "/sys/devices/system/cpu/present";
 	# TODO: This conceptually works but only displays uptime. deltas are necessary for recent usage
 	let timings = stat
 		|> string.split "\n"
@@ -74,20 +76,49 @@ let cpu = {
 			a + x
 		};
 	let usage = string.from_i64 (total - idle) * 100 / total;
-	# TODO: this is a comma-seperated list of minus-separated ranges of cpus. count them.
-	# let cores = present_cpus;
 
-	string.concat usage, "% cpu"
+	# this file is a comma-seperated list of minus-separated ranges of cpus.
+	let present_cpus = read_file "/sys/devices/system/cpu/present";
+	let cores = present_cpus
+		|> string.trim_whitespace ()
+		|> string.split ","
+		|> iter.map {
+			let iter = iter;
+			let string = string;
+			let option = option;
+			let OptionI64 = OptionI64;
+
+			with range;
+
+			let range_iter = range
+				|> string.split "-"
+				|> iter.map string.parse_i64
+				|> iter.map option.unwrap;
+			# TODO: another use for a dedicated next function. or maybe `collect` into a tuple.
+			let first = range_iter
+				|> iter.reduce_once ()
+				|> option.unwrap ();
+			let last = range_iter
+				|> iter.skip 1
+				|> iter.reduce_once ()
+				# If last is absent, treat the range as `first-first`
+				|> option.unwrap_or first;
+			last - first + 1
+		}
+		|> iter.fold 0, { with (a, x); a + x }
+		|> string.from_i64 ();
+
+	string.concat usage, "% of ", cores, " cpus"
 		|> label_color palette.green
 };
 
 let memory = {
-	let { command, label_color } = psybeam;
-	let { string, iter } = std;
-	let palette = palette;
-	let read_file = read_file;
 	# TODO: expose string type!!!
 	let OptionString = option (std.typeof "string");
+	let { command, label_color } = psybeam;
+	let { string, iter, option } = std;
+	let palette = palette;
+	let read_file = read_file;
 
 	with _widget;
 
@@ -98,25 +129,43 @@ let memory = {
 		|> iter.fold (available: OptionString.None, total: OptionString.None), {
 			let string = string;
 			let iter = iter;
+			let option = option;
 			let OptionString = OptionString;
 			with ({ available, total }, line);
 
 			# TODO: this could be better expressed as iter.next
-			let label = string.split_whitespace line |> iter.reduce_once ();
-			let value = string.split_whitespace line |> iter.skip 1 |> iter.reduce_once();
+			let label = string.split_whitespace line
+				|> iter.reduce_once ();
+			let value = string.split_whitespace line
+				|> iter.skip 1
+				|> iter.reduce_once();
 
-			# TODO: String comparison is not implemented.
-			# if label == (OptionString.Some "MemTotal:") then
-			# 	available: available, total: value
-			# else if label == (OptionString.Some "MemAvailable:") then
-			# 	available: value, total: total
-			# else then
-			# 	available: available, total: total
-			# end
-			available: "TODO", total: "TODO"
+			if label == (OptionString.Some "MemTotal:") then
+				available: available, total: value
+			else if label == (OptionString.Some "MemAvailable:") then
+				available: value, total: total
+			else then
+				available: available, total: total
+			end
 		};
+	let total = total
+		|> option.unwrap ()
+		|> string.parse_i64 ()
+		|> option.unwrap();
+	let available = available
+		|> option.unwrap ()
+		|> string.parse_i64 ()
+		|> option.unwrap();
+	let reserved = (total - available) / 1024
+		|> string.from_i64 ()
+		# TODO: I don't know if i can rely on the initial unit to always be KiB
+		|> string.concat "MiB";
+	let total = total / 1024
+		|> string.from_i64 ()
+		# TODO: I don't know if i can rely on the initial unit to always be KiB
+		|> string.concat "MiB";
 
-	string.concat available, "/", total, " memory"
+	string.concat reserved, "/", total, " memory"
 		|> label_color palette.white
 };
 

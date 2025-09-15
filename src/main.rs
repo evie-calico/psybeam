@@ -253,6 +253,8 @@ fn main() -> anyhow::Result<()> {
                 };
                 let instruction = widget.clone().into_function().unwrap().eval().unwrap();
                 match instruction {
+                    // Unit represents no drawing instructions.
+                    espy::Value::Unit => (),
                     espy::Value::Tuple(instructions) => instructions.values().for_each(draw),
                     _ => draw(&instruction),
                 }
