@@ -10,8 +10,9 @@ checksum = "b0674a1ddeecb70197781e945de4b3b8ffb61fa939a5597bcf48503737663100"
 
 [[package]]
 name = "dst-factory"
-version = "0.2.3"
-source = "git+ssh://git@github.com/evie-calico/dst-factory#928491ddc9d95404e7d30ee55f7e383dca4f83ab"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d0fe26ce426128a274de7e5cf07f12bcfe03cae6d9a5f6480ff86bfd90bb931a"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -21,7 +22,7 @@ dependencies = [
 [[package]]
 name = "espy"
 version = "0.1.0"
-source = "git+ssh://git@github.com/evie-calico/espy#2e77554b22638a8a132bbcd693b7266a6667fc53"
+source = "git+ssh://git@github.com/evie-calico/espy#25aa2891b713b44f7ff7f77a06ff602bd2bb5056"
 dependencies = [
  "espy-ears",
  "espy-eyes",
@@ -32,7 +33,7 @@ dependencies = [
 [[package]]
 name = "espy-ears"
 version = "0.1.0"
-source = "git+ssh://git@github.com/evie-calico/espy#2e77554b22638a8a132bbcd693b7266a6667fc53"
+source = "git+ssh://git@github.com/evie-calico/espy#25aa2891b713b44f7ff7f77a06ff602bd2bb5056"
 dependencies = [
  "dst-factory",
  "espy-eyes",
@@ -41,17 +42,17 @@ dependencies = [
 [[package]]
 name = "espy-eyes"
 version = "0.1.0"
-source = "git+ssh://git@github.com/evie-calico/espy#2e77554b22638a8a132bbcd693b7266a6667fc53"
+source = "git+ssh://git@github.com/evie-calico/espy#25aa2891b713b44f7ff7f77a06ff602bd2bb5056"
 
 [[package]]
 name = "espy-heart"
 version = "0.1.0"
-source = "git+ssh://git@github.com/evie-calico/espy#2e77554b22638a8a132bbcd693b7266a6667fc53"
+source = "git+ssh://git@github.com/evie-calico/espy#25aa2891b713b44f7ff7f77a06ff602bd2bb5056"
 
 [[package]]
 name = "espy-paws"
 version = "0.1.0"
-source = "git+ssh://git@github.com/evie-calico/espy#2e77554b22638a8a132bbcd693b7266a6667fc53"
+source = "git+ssh://git@github.com/evie-calico/espy#25aa2891b713b44f7ff7f77a06ff602bd2bb5056"
 dependencies = [
  "espy-heart",
 ]
@@ -59,7 +60,7 @@ dependencies = [
 [[package]]
 name = "espy-tail"
 version = "0.1.0"
-source = "git+ssh://git@github.com/evie-calico/espy#2e77554b22638a8a132bbcd693b7266a6667fc53"
+source = "git+ssh://git@github.com/evie-calico/espy#25aa2891b713b44f7ff7f77a06ff602bd2bb5056"
 dependencies = [
  "espy-ears",
  "espy-eyes",
@@ -69,7 +70,7 @@ dependencies = [
 [[package]]
 name = "espystandard"
 version = "0.1.0"
-source = "git+ssh://git@github.com/evie-calico/espy#2e77554b22638a8a132bbcd693b7266a6667fc53"
+source = "git+ssh://git@github.com/evie-calico/espy#25aa2891b713b44f7ff7f77a06ff602bd2bb5056"
 dependencies = [
  "espy-paws",
 ]

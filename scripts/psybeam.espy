@@ -19,8 +19,6 @@ let palette = {
 # Widgets
 
 let network = {
-	# TODO: rename this to `Option` to avoid the conflict with the `option` lib.
-	let OptionString = option (std.typeof "string");
 	let { string, iter, option } = std;
 	let { command, label_color } = psybeam;
 	let palette = palette;
@@ -42,7 +40,6 @@ let network = {
 };
 
 let cpu = {
-	let OptionI64 = option i64;
 	let { command, label_color } = psybeam;
 	let { string, iter, option } = std;
 	let palette = palette;
@@ -86,7 +83,6 @@ let cpu = {
 			let iter = iter;
 			let string = string;
 			let option = option;
-			let OptionI64 = OptionI64;
 
 			with range;
 
@@ -108,13 +104,11 @@ let cpu = {
 		|> iter.fold 0, { with (a, x); a + x }
 		|> string.from_i64 ();
 
-	string.concat usage, "% of ", cores, " cpus"
+	string.concat usage, "% "
 		|> label_color palette.green
 };
 
 let memory = {
-	# TODO: expose string type!!!
-	let OptionString = option (std.typeof "string");
 	let { command, label_color } = psybeam;
 	let { string, iter, option } = std;
 	let palette = palette;
@@ -126,11 +120,10 @@ let memory = {
 	# TODO: use filter/find instead of fold.
 	let { available, total } = meminfo
 		|> string.split "\n"
-		|> iter.fold (available: OptionString.None, total: OptionString.None), {
+		|> iter.fold (available: (Option String).None, total: (Option String).None), {
 			let string = string;
 			let iter = iter;
 			let option = option;
-			let OptionString = OptionString;
 			with ({ available, total }, line);
 
 			# TODO: this could be better expressed as iter.next
@@ -139,10 +132,9 @@ let memory = {
 			let value = string.split_whitespace line
 				|> iter.skip 1
 				|> iter.reduce_once();
-
-			if label == (OptionString.Some "MemTotal:") then
+			if label == ((Option String).Some "MemTotal:") then
 				available: available, total: value
-			else if label == (OptionString.Some "MemAvailable:") then
+			else if label == ((Option String).Some "MemAvailable:") then
 				available: value, total: total
 			else then
 				available: available, total: total
@@ -156,16 +148,10 @@ let memory = {
 		|> option.unwrap ()
 		|> string.parse_i64 ()
 		|> option.unwrap();
-	let reserved = (total - available) / 1024
-		|> string.from_i64 ()
-		# TODO: I don't know if i can rely on the initial unit to always be KiB
-		|> string.concat "MiB";
-	let total = total / 1024
-		|> string.from_i64 ()
-		# TODO: I don't know if i can rely on the initial unit to always be KiB
-		|> string.concat "MiB";
+	let usage = (total - available) * 100 / total
+		|> string.from_i64 ();
 
-	string.concat reserved, "/", total, " memory"
+	string.concat usage, "% "
 		|> label_color palette.white
 };
 
@@ -188,8 +174,28 @@ let battery = {
 		|> string.trim_whitespace ();
 	let status = read_file (property "status")
 		|> string.trim_whitespace ();
+	let icon = if status == "Discharging" then
+		let capacity = capacity
+			|> string.parse_i64 ()
+			|> option.unwrap ();
+		if capacity > 99 then
+			""
+		else if capacity > 75 then
+			""
+		else if capacity > 50 then
+			""
+		else if capacity > 25 then
+			""
+		else then
+			""
+		end
+	else if status == "Charging" then
+		""
+	else then
+		status
+	end;
 
-	string.concat capacity, "% ", status
+	string.concat capacity, "% ", icon
 		|> label_color palette.pink
 };
 

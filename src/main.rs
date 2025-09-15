@@ -251,12 +251,14 @@ fn main() -> anyhow::Result<()> {
                         eprintln!("unrecognized drawing instruction: {instruction:?}");
                     }
                 };
-                let instruction = widget.clone().into_function().unwrap().eval().unwrap();
-                match instruction {
+                match widget.clone().into_function().unwrap().eval() {
                     // Unit represents no drawing instructions.
-                    espy::Value::Unit => (),
-                    espy::Value::Tuple(instructions) => instructions.values().for_each(draw),
-                    _ => draw(&instruction),
+                    Ok(espy::Value::Unit) => (),
+                    Ok(espy::Value::Tuple(instructions)) => instructions.values().for_each(draw),
+                    Ok(instruction) => draw(&instruction),
+                    Err(e) => {
+                        eprintln!("widget renderer failed: {e:?}");
+                    }
                 }
             }
         }
