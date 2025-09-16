@@ -45,34 +45,53 @@ let cpu = {
 	let palette = palette;
 	let read_file = read_file;
 
+	# cpu usage involves diffing the current and last known values of /proc/stat
+	# by initializing this to 0, the first render will show net usage; not useful, but something.
+	let last_timing = mut (
+		idle: 0,
+		total: 0
+	);
+
 	with _widget;
 
-	let stat = read_file "/proc/stat";
-	# TODO: This conceptually works but only displays uptime. deltas are necessary for recent usage
-	let timings = stat
+	let timings = read_file "/proc/stat"
+		# the first line of /proc/stat is total cpu time...
 		|> string.split "\n"
 		|> iter.reduce_once ()
 		|> option.unwrap()
+		# ...each entry is a space-separated integer...
 		|> string.split_whitespace ()
+		# ...except for the first one, which is always "cpu".
 		|> iter.skip 1;
-	let idle = timings
-		|> iter.skip 3
-		|> iter.reduce_once ()
-		|> option.unwrap()
-		|> string.parse_i64 ()
-		|> option.unwrap();
-	let total = timings
-		|> iter.map {
-			let string = string;
-			let option = option;
-			with i;
-			string.parse_i64 i |> option.unwrap()
-		}
-		|> iter.fold 0, {
-			with (a, x);
-			a + x
-		};
-	let usage = string.from_i64 (total - idle) * 100 / total;
+
+	let current_timing = (
+		idle: (
+			timings
+				# the 4th entry is idle cpu time
+				|> iter.skip 3
+				|> iter.reduce_once ()
+				|> option.unwrap()
+				|> string.parse_i64 ()
+				|> option.unwrap()
+		),
+		total: (
+			timings
+				|> iter.map {
+					let string = string;
+					let option = option;
+					with i;
+					string.parse_i64 i |> option.unwrap()
+				}
+				|> iter.fold 0, {
+					with (a, x);
+					a + x
+				}
+		)
+	);
+	let idle_diff = current_timing.idle - last_timing.*.idle;
+	let total_diff = current_timing.total - last_timing.*.total;
+	let usage = string.from_i64 (total_diff - idle_diff) * 100 / total_diff;
+	set last_timing = current_timing;
 
 	# this file is a comma-seperated list of minus-separated ranges of cpus.
 	let present_cpus = read_file "/sys/devices/system/cpu/present";

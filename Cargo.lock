@@ -22,7 +22,7 @@ dependencies = [
 [[package]]
 name = "espy"
 version = "0.1.0"
-source = "git+ssh://git@github.com/evie-calico/espy#25aa2891b713b44f7ff7f77a06ff602bd2bb5056"
+source = "git+ssh://git@github.com/evie-calico/espy#4c58cdbbc41f3989a00055e74e04d314502694f5"
 dependencies = [
  "espy-ears",
  "espy-eyes",
@@ -33,7 +33,7 @@ dependencies = [
 [[package]]
 name = "espy-ears"
 version = "0.1.0"
-source = "git+ssh://git@github.com/evie-calico/espy#25aa2891b713b44f7ff7f77a06ff602bd2bb5056"
+source = "git+ssh://git@github.com/evie-calico/espy#4c58cdbbc41f3989a00055e74e04d314502694f5"
 dependencies = [
  "dst-factory",
  "espy-eyes",
@@ -42,17 +42,17 @@ dependencies = [
 [[package]]
 name = "espy-eyes"
 version = "0.1.0"
-source = "git+ssh://git@github.com/evie-calico/espy#25aa2891b713b44f7ff7f77a06ff602bd2bb5056"
+source = "git+ssh://git@github.com/evie-calico/espy#4c58cdbbc41f3989a00055e74e04d314502694f5"
 
 [[package]]
 name = "espy-heart"
 version = "0.1.0"
-source = "git+ssh://git@github.com/evie-calico/espy#25aa2891b713b44f7ff7f77a06ff602bd2bb5056"
+source = "git+ssh://git@github.com/evie-calico/espy#4c58cdbbc41f3989a00055e74e04d314502694f5"
 
 [[package]]
 name = "espy-paws"
 version = "0.1.0"
-source = "git+ssh://git@github.com/evie-calico/espy#25aa2891b713b44f7ff7f77a06ff602bd2bb5056"
+source = "git+ssh://git@github.com/evie-calico/espy#4c58cdbbc41f3989a00055e74e04d314502694f5"
 dependencies = [
  "espy-heart",
 ]
@@ -60,7 +60,7 @@ dependencies = [
 [[package]]
 name = "espy-tail"
 version = "0.1.0"
-source = "git+ssh://git@github.com/evie-calico/espy#25aa2891b713b44f7ff7f77a06ff602bd2bb5056"
+source = "git+ssh://git@github.com/evie-calico/espy#4c58cdbbc41f3989a00055e74e04d314502694f5"
 dependencies = [
  "espy-ears",
  "espy-eyes",
@@ -70,7 +70,7 @@ dependencies = [
 [[package]]
 name = "espystandard"
 version = "0.1.0"
-source = "git+ssh://git@github.com/evie-calico/espy#25aa2891b713b44f7ff7f77a06ff602bd2bb5056"
+source = "git+ssh://git@github.com/evie-calico/espy#4c58cdbbc41f3989a00055e74e04d314502694f5"
 dependencies = [
  "espy-paws",
 ]
