@@ -9,11 +9,11 @@ let read_file = {
 let palette = {
 	let color = psybeam.color.hex;
 
-	blue: (color "#0000FF"),
-	green: (color "#00FF00"),
-	white: (color "#FFFFFF"),
-	pink: (color "#FF8080"),
-	red: (color "#FF0000")
+	blue: (color "#46c0ea"),
+	green: (color "#9dffa4"),
+	white: (color "#cccccc"),
+	pink: (color "#c6507b"),
+	red: (color "#9f1457")
 };
 
 # Widgets
@@ -46,7 +46,6 @@ let cpu = {
 	let read_file = read_file;
 
 	# cpu usage involves diffing the current and last known values of /proc/stat
-	# by initializing this to 0, the first render will show net usage; not useful, but something.
 	let last_timing = mut (
 		idle: 0,
 		total: 0
