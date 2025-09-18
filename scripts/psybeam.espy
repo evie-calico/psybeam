@@ -1,3 +1,5 @@
+#!/usr/bin/env psybeam
+
 with { std, psybeam };
 
 let read_file = {
