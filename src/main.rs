@@ -35,55 +35,57 @@ fn main() -> anyhow::Result<()> {
         psybeam: bindings::PsybeamLib::new(),
     };
 
-    for arg in env::args().skip(1) {
-        let source = fs::read_to_string(arg)?;
-        // TODO: espy Errors need to implement Error.
-        let program = espy::Program::try_from(source.as_str()).unwrap();
-        let function = program.eval().unwrap().into_function().unwrap();
-        let layout = function
-            .piped(espy::Value::borrow(&libs))
-            .eval()
-            .unwrap()
-            .into_tuple()
-            .unwrap();
+    let source = fs::read_to_string(
+        env::args()
+            .nth(1)
+            .ok_or_else(|| anyhow::anyhow!("expected one argument"))?,
+    )?;
+    // TODO: espy Errors need to implement Error.
+    let program = espy::Program::try_from(source.as_str()).unwrap();
+    let function = program.eval().unwrap().into_function().unwrap();
+    let layout = function
+        .piped(espy::Value::borrow(&libs))
+        .eval()
+        .unwrap()
+        .into_tuple()
+        .unwrap();
 
-        for widget in layout.values() {
-            if widget.downcast_extern::<bindings::SpacerWidget>().is_some() {
-                print!("<--> ")
-            } else {
-                let draw = |instruction: &espy::Value| {
-                    if let Some(bindings::Label {
-                        text,
-                        red,
-                        green,
-                        blue,
-                        alpha: _,
-                    }) = instruction.downcast_extern()
-                    {
-                        print!("\x1B[38;2;{red};{green};{blue}m{text}\x1B[0m ",);
-                    } else {
-                        eprintln!("unrecognized drawing instruction: {instruction:?}");
-                    }
-                };
-                match widget.clone().into_function().unwrap().eval() {
-                    // Unit represents no drawing instructions.
-                    Ok(espy::Value::Unit) => (),
-                    Ok(espy::Value::Tuple(instructions)) => instructions.values().for_each(draw),
-                    Ok(instruction) => draw(&instruction),
-                    Err(e) => {
-                        eprintln!("widget renderer failed: {e:?}");
-                    }
+    for widget in layout.values() {
+        if widget.downcast_extern::<bindings::SpacerWidget>().is_some() {
+            print!("<--> ")
+        } else {
+            let draw = |instruction: &espy::Value| {
+                if let Some(bindings::Label {
+                    text,
+                    red,
+                    green,
+                    blue,
+                    alpha: _,
+                }) = instruction.downcast_extern()
+                {
+                    print!("\x1B[38;2;{red};{green};{blue}m{text}\x1B[0m ",);
+                } else {
+                    eprintln!("unrecognized drawing instruction: {instruction:?}");
+                }
+            };
+            match widget.clone().into_function().unwrap().eval() {
+                // Unit represents no drawing instructions.
+                Ok(espy::Value::Unit) => (),
+                Ok(espy::Value::Tuple(instructions)) => instructions.values().for_each(draw),
+                Ok(instruction) => draw(&instruction),
+                Err(e) => {
+                    eprintln!("widget renderer failed: {e:?}");
                 }
             }
         }
-        println!();
     }
+    println!();
 
     let connection = Connection::connect_to_env()?;
     let mut event_queue = connection.new_event_queue();
     let qh = event_queue.handle();
     let display = connection.display();
-    let registry = display.get_registry(&qh, ());
+    let _ = display.get_registry(&qh, ());
 
     let mut psybeam = wayland::Psybeam::new(libs.psybeam.surface_config());
 

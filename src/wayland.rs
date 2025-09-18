@@ -15,10 +15,11 @@ pub struct Psybeam {
     pub running: bool,
 
     base_surface: Option<wl_surface::WlSurface>,
-    buffer: Option<wl_buffer::WlBuffer>,
     layer_shell: Option<ZwlrLayerShellV1>,
+    wl_shm: Option<wl_shm::WlShm>,
     layer_surface: Option<ZwlrLayerSurfaceV1>,
     wl_output: Option<wl_output::WlOutput>,
+    width: Option<u32>,
 }
 
 impl Psybeam {
@@ -27,10 +28,11 @@ impl Psybeam {
             config,
             running: true,
             base_surface: None,
-            buffer: None,
             layer_shell: None,
+            wl_shm: None,
             layer_surface: None,
             wl_output: None,
+            width: None,
         }
     }
 }
@@ -65,23 +67,7 @@ impl Dispatch<wl_registry::WlRegistry, ()> for Psybeam {
                 }
                 "wl_shm" => {
                     let shm = registry.bind::<wl_shm::WlShm, _, _>(name, 1, qh, ());
-
-                    let (init_w, init_h) = (500, state.config.height);
-
-                    let mut file = tempfile::tempfile().unwrap();
-                    draw(&mut file, (init_w, init_h));
-                    let pool = shm.create_pool(file.as_fd(), (init_w * init_h * 4) as i32, qh, ());
-                    let buffer = pool.create_buffer(
-                        0,
-                        init_w as i32,
-                        init_h as i32,
-                        (init_w * 4) as i32,
-                        wl_shm::Format::Argb8888,
-                        qh,
-                        (),
-                    );
-                    state.buffer = Some(buffer.clone());
-
+                    state.wl_shm = Some(shm);
                     state.attempt_init(qh);
                 }
                 "zwlr_layer_shell_v1" => {
@@ -101,6 +87,7 @@ delegate_noop!(Psybeam: ignore wl_surface::WlSurface);
 delegate_noop!(Psybeam: ignore wl_shm::WlShm);
 delegate_noop!(Psybeam: ignore wl_shm_pool::WlShmPool);
 delegate_noop!(Psybeam: ignore wl_buffer::WlBuffer);
+delegate_noop!(Psybeam: ignore zwlr_layer_shell_v1::ZwlrLayerShellV1);
 
 fn draw(tmp: &mut File, (buf_x, buf_y): (u32, u32)) {
     use std::{cmp::min, io::Write};
@@ -132,9 +119,26 @@ impl Psybeam {
         let Some(wl_output) = &self.wl_output else {
             return;
         };
-        let Some(buffer) = &self.buffer else {
+        let Some(wl_shm) = &self.wl_shm else {
             return;
         };
+        let Some(width) = self.width else {
+            return;
+        };
+        let height = self.config.height;
+
+        let mut file = tempfile::tempfile().unwrap();
+        draw(&mut file, (width, height));
+        let pool = wl_shm.create_pool(file.as_fd(), (width * height * 4) as i32, qh, ());
+        let buffer = pool.create_buffer(
+            0,
+            width as i32,
+            height as i32,
+            (width * 4) as i32,
+            wl_shm::Format::Argb8888,
+            qh,
+            (),
+        );
         let layer_surface = layer_shell.get_layer_surface(
             base_surface,
             Some(wl_output),
@@ -148,40 +152,16 @@ impl Psybeam {
         } else {
             zwlr_layer_surface_v1::Anchor::Top
         });
-        layer_surface.set_size(500, self.config.height);
+        layer_surface.set_size(width, height);
         layer_surface.set_exclusive_zone(
             self.config
                 .exclusive_height
                 .unwrap_or(self.config.height as i32),
         );
-        base_surface.attach(Some(buffer), 0, 0);
+        base_surface.attach(Some(&buffer), 0, 0);
         base_surface.commit();
 
         self.layer_surface = Some(layer_surface);
-    }
-}
-
-impl Dispatch<wl_output::WlOutput, ()> for Psybeam {
-    fn event(
-        _: &mut Self,
-        _: &wl_output::WlOutput,
-        _: wl_output::Event,
-        _: &(),
-        _: &Connection,
-        _: &QueueHandle<Self>,
-    ) {
-    }
-}
-
-impl Dispatch<ZwlrLayerShellV1, ()> for Psybeam {
-    fn event(
-        _: &mut Self,
-        _: &ZwlrLayerShellV1,
-        _: zwlr_layer_shell_v1::Event,
-        _: &(),
-        _: &Connection,
-        _: &QueueHandle<Self>,
-    ) {
     }
 }
 
@@ -207,6 +187,23 @@ impl Dispatch<ZwlrLayerSurfaceV1, ()> for Psybeam {
                 state.running = false;
             }
             _ => unreachable!(),
+        }
+    }
+}
+
+impl Dispatch<wl_output::WlOutput, ()> for Psybeam {
+    fn event(
+        state: &mut Self,
+        _: &wl_output::WlOutput,
+        event: wl_output::Event,
+        _: &(),
+        _: &Connection,
+        qh: &QueueHandle<Self>,
+    ) {
+        // TODO: scale
+        if let wl_output::Event::Mode { width, .. } = event {
+            state.width = Some(width as u32);
+            state.attempt_init(qh);
         }
     }
 }
