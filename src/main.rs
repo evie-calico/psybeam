@@ -32,7 +32,7 @@ impl espy::Extern for Libs {
 fn main() -> anyhow::Result<()> {
     let libs = Libs {
         std: espystandard::StdLib,
-        psybeam: bindings::PsybeamLib,
+        psybeam: bindings::PsybeamLib::new(),
     };
 
     for arg in env::args().skip(1) {
@@ -85,11 +85,7 @@ fn main() -> anyhow::Result<()> {
     let display = connection.display();
     let registry = display.get_registry(&qh, ());
 
-    let mut psybeam = wayland::Psybeam::new(bindings::SurfaceConfig {
-        height: 16,
-        exclusive_height: Some(0),
-        bottom: true,
-    });
+    let mut psybeam = wayland::Psybeam::new(libs.psybeam.surface_config());
 
     while psybeam.running {
         event_queue.blocking_dispatch(&mut psybeam)?;

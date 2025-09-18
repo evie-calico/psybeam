@@ -231,6 +231,10 @@ let clock = {
 		|> label_color palette.red
 };
 
+psybeam.surface.height 32;
+psybeam.surface.exclusive_height 0;
+psybeam.surface.bottom ();
+
 network,
 	psybeam.spacer,
 cpu, memory, battery,

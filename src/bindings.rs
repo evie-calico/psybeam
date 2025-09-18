@@ -1,4 +1,4 @@
-use std::rc::Rc;
+use std::{cell::RefCell, rc::Rc};
 
 #[derive(Debug)]
 pub struct Label {
@@ -52,6 +52,7 @@ impl espy::Extern for SpacerWidget {
     }
 }
 
+#[derive(Clone)]
 pub struct SurfaceConfig {
     /// Allocate this many rows for drawing.
     pub height: u32,
@@ -67,24 +68,141 @@ pub struct SurfaceConfig {
     pub bottom: bool,
 }
 
-pub struct PsybeamLib;
+pub struct SurfaceLib(RefCell<SurfaceConfig>);
+
+impl espy::Extern for SurfaceLib {
+    fn any(&self) -> Option<&dyn std::any::Any> {
+        Some(self)
+    }
+
+    fn index<'host>(
+        &'host self,
+        index: espy::Value<'host>,
+    ) -> Result<espy::Value<'host>, espy::Error<'host>> {
+        struct HeightFn;
+        impl espy::ExternFn for HeightFn {
+            fn call<'host>(
+                &'host self,
+                argument: espy::Value<'host>,
+            ) -> Result<espy::Value<'host>, espy::Error<'host>> {
+                argument
+                    .get(0)?
+                    .downcast_extern::<SurfaceLib>()
+                    .ok_or_else(|| "first argument must be surface lib".to_string())
+                    .map_err(|s| espy::Error::Other(s.into()))?
+                    .0
+                    .borrow_mut()
+                    .height = argument.get(1)?.into_i64()? as u32;
+                Ok(().into())
+            }
+        }
+
+        struct ExclusiveHeightFn;
+        impl espy::ExternFn for ExclusiveHeightFn {
+            fn call<'host>(
+                &'host self,
+                argument: espy::Value<'host>,
+            ) -> Result<espy::Value<'host>, espy::Error<'host>> {
+                argument
+                    .get(0)?
+                    .downcast_extern::<SurfaceLib>()
+                    .unwrap()
+                    .0
+                    .borrow_mut()
+                    .exclusive_height = Some(argument.get(1)?.into_i64()? as i32);
+                Ok(().into())
+            }
+        }
+
+        struct TopFn;
+        impl espy::ExternFn for TopFn {
+            fn call<'host>(
+                &'host self,
+                argument: espy::Value<'host>,
+            ) -> Result<espy::Value<'host>, espy::Error<'host>> {
+                argument
+                    .downcast_extern::<SurfaceLib>()
+                    .unwrap()
+                    .0
+                    .borrow_mut()
+                    .bottom = false;
+                Ok(().into())
+            }
+        }
+
+        struct BottomFn;
+        impl espy::ExternFn for BottomFn {
+            fn call<'host>(
+                &'host self,
+                argument: espy::Value<'host>,
+            ) -> Result<espy::Value<'host>, espy::Error<'host>> {
+                argument
+                    .downcast_extern::<SurfaceLib>()
+                    .unwrap()
+                    .0
+                    .borrow_mut()
+                    .bottom = true;
+                Ok(().into())
+            }
+        }
+
+        let index = index.into_str()?;
+        match &*index {
+            "height" => Ok(espy::Function::borrow(&HeightFn)
+                .piped(espy::Value::borrow(self))
+                .into()),
+            "exclusive_height" => Ok(espy::Function::borrow(&ExclusiveHeightFn)
+                .piped(espy::Value::borrow(self))
+                .into()),
+            "top" => Ok(espy::Function::borrow(&TopFn)
+                .piped(espy::Value::borrow(self))
+                .into()),
+            "bottom" => Ok(espy::Function::borrow(&BottomFn)
+                .piped(espy::Value::borrow(self))
+                .into()),
+            _ => Err(espy::Error::IndexNotFound {
+                index: index.into(),
+                container: espy::Value::borrow(self),
+            }),
+        }
+    }
+
+    fn debug(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "psybeam.surface module")
+    }
+}
+
+pub struct PsybeamLib {
+    pub surface_config: SurfaceLib,
+}
+
+impl PsybeamLib {
+    pub fn new() -> Self {
+        Self {
+            surface_config: SurfaceLib(RefCell::new(SurfaceConfig {
+                height: 16,
+                exclusive_height: None,
+                bottom: false,
+            })),
+        }
+    }
+    pub fn surface_config(&self) -> SurfaceConfig {
+        (*self.surface_config.0.borrow()).clone()
+    }
+}
 
 impl espy::Extern for PsybeamLib {
     fn index<'host>(
         &'host self,
         index: espy::Value<'host>,
     ) -> Result<espy::Value<'host>, espy::Error<'host>> {
-        static COMMAND: CommandFn = CommandFn;
-        static COLOR: ColorLib = ColorLib;
-        static LABEL_COLOR: LabelColorFn = LabelColorFn;
-        static SPACER: SpacerWidget = SpacerWidget;
-
         let index = index.into_str()?;
         match &*index {
-            "color" => Ok(espy::Value::borrow(&COLOR)),
-            "command" => Ok(espy::Function::borrow(&COMMAND).into()),
-            "label_color" => Ok(espy::Function::borrow(&LABEL_COLOR).into()),
-            "spacer" => Ok(espy::Value::borrow(&SPACER)),
+            "color" => Ok(espy::Value::borrow(&ColorLib)),
+            "command" => Ok(espy::Function::borrow(&CommandFn).into()),
+            "label_color" => Ok(espy::Function::borrow(&LabelColorFn).into()),
+            "spacer" => Ok(espy::Value::borrow(&SpacerWidget)),
+            "surface" => Ok(espy::Value::borrow(&self.surface_config)),
             _ => Err(espy::Error::IndexNotFound {
                 index: index.into(),
                 container: espy::Value::borrow(self),
