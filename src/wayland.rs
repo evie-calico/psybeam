@@ -10,16 +10,61 @@ use wayland_protocols_wlr::layer_shell::v1::client::{
     zwlr_layer_surface_v1::{self, ZwlrLayerSurfaceV1},
 };
 
+#[derive(Default)]
+pub struct PsybeamPartial {
+    wl_output: Option<wl_output::WlOutput>,
+    wl_shm: Option<wl_shm::WlShm>,
+    base_surface: Option<wl_surface::WlSurface>,
+    layer_shell: Option<ZwlrLayerShellV1>,
+    width: Option<u32>,
+}
+
+pub struct PsybeamPartialRef<'a>(&'a mut Psybeam, &'a QueueHandle<Psybeam>);
+
+impl std::ops::Deref for PsybeamPartialRef<'_> {
+    type Target = PsybeamPartial;
+    fn deref(&self) -> &Self::Target {
+        let PsybeamResources::Partial(partial) = &self.0.resources else {
+            unreachable!();
+        };
+        partial
+    }
+}
+
+impl std::ops::DerefMut for PsybeamPartialRef<'_> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        let PsybeamResources::Partial(partial) = &mut self.0.resources else {
+            unreachable!();
+        };
+        partial
+    }
+}
+
+impl Drop for PsybeamPartialRef<'_> {
+    fn drop(&mut self) {
+        self.0.attempt_init(self.1);
+    }
+}
+
+pub struct PsybeamFinal {
+    wl_output: wl_output::WlOutput,
+    wl_shm: wl_shm::WlShm,
+    base_surface: wl_surface::WlSurface,
+    layer_shell: ZwlrLayerShellV1,
+    width: u32,
+
+    layer_surface: ZwlrLayerSurfaceV1,
+}
+
+pub enum PsybeamResources {
+    Partial(PsybeamPartial),
+    Final(PsybeamFinal),
+}
+
 pub struct Psybeam {
     pub config: SurfaceConfig,
     pub running: bool,
-
-    base_surface: Option<wl_surface::WlSurface>,
-    layer_shell: Option<ZwlrLayerShellV1>,
-    wl_shm: Option<wl_shm::WlShm>,
-    layer_surface: Option<ZwlrLayerSurfaceV1>,
-    wl_output: Option<wl_output::WlOutput>,
-    width: Option<u32>,
+    resources: PsybeamResources,
 }
 
 impl Psybeam {
@@ -27,13 +72,22 @@ impl Psybeam {
         Self {
             config,
             running: true,
-            base_surface: None,
-            layer_shell: None,
-            wl_shm: None,
-            layer_surface: None,
-            wl_output: None,
-            width: None,
+            resources: PsybeamResources::Partial(PsybeamPartial::default()),
         }
+    }
+
+    fn resources<'a>(&'a mut self, qh: &'a QueueHandle<Self>) -> Option<PsybeamPartialRef<'a>> {
+        match &self.resources {
+            PsybeamResources::Partial(_) => Some(PsybeamPartialRef(self, qh)),
+            PsybeamResources::Final(_) => None,
+        }
+    }
+
+    fn final_resources(&mut self) -> &mut PsybeamFinal {
+        let PsybeamResources::Final(final_resources) = &mut self.resources else {
+            unreachable!();
+        };
+        final_resources
     }
 }
 
@@ -52,28 +106,30 @@ impl Dispatch<wl_registry::WlRegistry, ()> for Psybeam {
         {
             match &interface[..] {
                 "wl_compositor" => {
-                    let compositor =
-                        registry.bind::<wl_compositor::WlCompositor, _, _>(name, 1, qh, ());
-                    let surface = compositor.create_surface(qh, ());
-                    state.base_surface = Some(surface);
-
-                    state.attempt_init(qh);
+                    if let Some(mut resources) = state.resources(qh) {
+                        let compositor =
+                            registry.bind::<wl_compositor::WlCompositor, _, _>(name, 1, qh, ());
+                        let surface = compositor.create_surface(qh, ());
+                        resources.base_surface = Some(surface);
+                    }
                 }
                 "wl_output" => {
-                    let wl_output = registry.bind::<wl_output::WlOutput, _, _>(name, 1, qh, ());
-                    state.wl_output = Some(wl_output);
-
-                    state.attempt_init(qh);
+                    if let Some(mut resources) = state.resources(qh) {
+                        let wl_output = registry.bind::<wl_output::WlOutput, _, _>(name, 1, qh, ());
+                        resources.wl_output = Some(wl_output);
+                    }
                 }
                 "wl_shm" => {
-                    let shm = registry.bind::<wl_shm::WlShm, _, _>(name, 1, qh, ());
-                    state.wl_shm = Some(shm);
-                    state.attempt_init(qh);
+                    if let Some(mut resources) = state.resources(qh) {
+                        let shm = registry.bind::<wl_shm::WlShm, _, _>(name, 1, qh, ());
+                        resources.wl_shm = Some(shm);
+                    }
                 }
                 "zwlr_layer_shell_v1" => {
-                    let layer_shell = registry.bind::<ZwlrLayerShellV1, _, _>(name, 1, qh, ());
-                    state.layer_shell = Some(layer_shell);
-                    state.attempt_init(qh);
+                    if let Some(mut resources) = state.resources(qh) {
+                        let layer_shell = registry.bind::<ZwlrLayerShellV1, _, _>(name, 1, qh, ());
+                        resources.layer_shell = Some(layer_shell);
+                    }
                 }
                 _ => {}
             }
@@ -107,24 +163,17 @@ fn draw(tmp: &mut File, (buf_x, buf_y): (u32, u32)) {
 
 impl Psybeam {
     fn attempt_init(&mut self, qh: &QueueHandle<Psybeam>) {
-        if self.layer_surface.is_some() {
-            return;
-        }
-        let Some(base_surface) = &self.base_surface else {
-            return;
-        };
-        let Some(layer_shell) = &self.layer_shell else {
-            return;
-        };
-        let Some(wl_output) = &self.wl_output else {
+        let PsybeamResources::Partial(PsybeamPartial {
+            wl_output: Some(wl_output),
+            wl_shm: Some(wl_shm),
+            base_surface: Some(base_surface),
+            layer_shell: Some(layer_shell),
+            width: Some(width),
+        }) = &self.resources
+        else {
             return;
         };
-        let Some(wl_shm) = &self.wl_shm else {
-            return;
-        };
-        let Some(width) = self.width else {
-            return;
-        };
+        let width = *width;
         let height = self.config.height;
 
         let mut file = tempfile::tempfile().unwrap();
@@ -161,7 +210,14 @@ impl Psybeam {
         base_surface.attach(Some(&buffer), 0, 0);
         base_surface.commit();
 
-        self.layer_surface = Some(layer_surface);
+        self.resources = PsybeamResources::Final(PsybeamFinal {
+            wl_output: wl_output.clone(),
+            wl_shm: wl_shm.clone(),
+            base_surface: base_surface.clone(),
+            layer_shell: layer_shell.clone(),
+            width,
+            layer_surface,
+        })
     }
 }
 
@@ -181,7 +237,7 @@ impl Dispatch<ZwlrLayerSurfaceV1, ()> for Psybeam {
                 height: _,
             } => {
                 surface.ack_configure(serial);
-                state.base_surface.as_ref().unwrap().commit();
+                state.final_resources().base_surface.commit();
             }
             zwlr_layer_surface_v1::Event::Closed => {
                 state.running = false;
@@ -202,8 +258,11 @@ impl Dispatch<wl_output::WlOutput, ()> for Psybeam {
     ) {
         // TODO: scale
         if let wl_output::Event::Mode { width, .. } = event {
-            state.width = Some(width as u32);
-            state.attempt_init(qh);
+            if let Some(mut resources) = state.resources(qh) {
+                resources.width = Some(width as u32);
+            } else {
+                state.final_resources().width = width as u32;
+            }
         }
     }
 }
