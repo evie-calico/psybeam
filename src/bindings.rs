@@ -172,24 +172,7 @@ impl espy::Extern for SurfaceLib {
     }
 }
 
-pub struct PsybeamLib {
-    pub surface_config: SurfaceLib,
-}
-
-impl PsybeamLib {
-    pub fn new() -> Self {
-        Self {
-            surface_config: SurfaceLib(RefCell::new(SurfaceConfig {
-                height: 16,
-                exclusive_height: None,
-                bottom: false,
-            })),
-        }
-    }
-    pub fn surface_config(&self) -> SurfaceConfig {
-        (*self.surface_config.0.borrow()).clone()
-    }
-}
+pub struct PsybeamLib;
 
 impl espy::Extern for PsybeamLib {
     fn index<'host>(
@@ -202,7 +185,6 @@ impl espy::Extern for PsybeamLib {
             "command" => Ok(espy::Function::borrow(&CommandFn).into()),
             "label_color" => Ok(espy::Function::borrow(&LabelColorFn).into()),
             "spacer" => Ok(espy::Value::borrow(&SpacerWidget)),
-            "surface" => Ok(espy::Value::borrow(&self.surface_config)),
             _ => Err(espy::Error::IndexNotFound {
                 index: index.into(),
                 container: espy::Value::borrow(self),

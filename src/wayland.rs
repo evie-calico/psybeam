@@ -1,4 +1,4 @@
-use crate::bindings::SurfaceConfig;
+use crate::Psybeam;
 use std::io::Write;
 use std::os::unix::io::AsFd;
 use wayland_client::{
@@ -65,21 +65,7 @@ pub enum PsybeamResources {
     Final(PsybeamFinal),
 }
 
-pub struct Psybeam {
-    pub config: SurfaceConfig,
-    pub running: bool,
-    resources: PsybeamResources,
-}
-
 impl Psybeam {
-    pub fn new(config: SurfaceConfig) -> Self {
-        Self {
-            config,
-            running: true,
-            resources: PsybeamResources::Partial(PsybeamPartial::default()),
-        }
-    }
-
     fn resources<'a>(&'a mut self, qh: &'a QueueHandle<Self>) -> Option<PsybeamPartialRef<'a>> {
         match &self.resources {
             PsybeamResources::Partial(_) => Some(PsybeamPartialRef(self, qh)),
@@ -167,7 +153,7 @@ impl Psybeam {
         let mut file = std::io::BufWriter::new(tempfile::tempfile().unwrap());
         let pool_size = width as usize * height as usize * size_of::<u32>();
 
-        let message = "meow, world!";
+        let message = self.render();
 
         for _ in 0..(pool_size / message.len()) {
             let _ = file.write(message.as_bytes());
@@ -275,14 +261,38 @@ impl Dispatch<wl_callback::WlCallback, ()> for Psybeam {
         _: &Connection,
         qh: &QueueHandle<Self>,
     ) {
-        match event {
-            wl_callback::Event::Done { callback_data } => {
-                let base_surface = &mut state.final_resources().base_surface;
-                base_surface.frame(qh, ());
-                base_surface.commit();
-                println!("{callback_data}");
+        if let wl_callback::Event::Done { .. } = event {
+            let height = state.config.height;
+            let message = state.render();
+            let resources = state.final_resources();
+            let base_surface = &mut resources.base_surface;
+            let width = resources.width;
+            base_surface.frame(qh, ());
+            let mut file = std::io::BufWriter::new(tempfile::tempfile().unwrap());
+            let pool_size = width as usize * height as usize * size_of::<u32>();
+
+            for _ in 0..(pool_size / message.len()) {
+                let _ = file.write(message.as_bytes());
             }
-            _ => todo!(),
+            for _ in 0..(pool_size % message.len()) {
+                let _ = file.write(&[0]);
+            }
+            let file = file.into_inner().unwrap();
+            let pool = resources
+                .wl_shm
+                .create_pool(file.as_fd(), pool_size as i32, qh, ());
+            let buffer = pool.create_buffer(
+                0,
+                width as i32,
+                height as i32,
+                (width * 4) as i32,
+                wl_shm::Format::Argb8888,
+                qh,
+                (),
+            );
+            base_surface.damage(0, 0, width as i32, height as i32);
+            base_surface.attach(Some(&buffer), 0, 0);
+            base_surface.commit();
         }
     }
 }
