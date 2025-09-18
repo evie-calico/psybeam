@@ -2,7 +2,10 @@ use crate::bindings::SurfaceConfig;
 use std::{fs::File, os::unix::io::AsFd};
 use wayland_client::{
     Connection, Dispatch, QueueHandle, delegate_noop,
-    protocol::{wl_buffer, wl_compositor, wl_output, wl_registry, wl_shm, wl_shm_pool, wl_surface},
+    protocol::{
+        wl_buffer, wl_callback, wl_compositor, wl_output, wl_registry, wl_shm, wl_shm_pool,
+        wl_surface,
+    },
 };
 
 use wayland_protocols_wlr::layer_shell::v1::client::{
@@ -208,6 +211,7 @@ impl Psybeam {
                 .unwrap_or(self.config.height as i32),
         );
         base_surface.attach(Some(&buffer), 0, 0);
+        let callback = base_surface.frame(qh, ());
         base_surface.commit();
 
         self.resources = PsybeamResources::Final(PsybeamFinal {
@@ -263,6 +267,27 @@ impl Dispatch<wl_output::WlOutput, ()> for Psybeam {
             } else {
                 state.final_resources().width = width as u32;
             }
+        }
+    }
+}
+
+impl Dispatch<wl_callback::WlCallback, ()> for Psybeam {
+    fn event(
+        state: &mut Self,
+        _: &wl_callback::WlCallback,
+        event: wl_callback::Event,
+        _: &(),
+        _: &Connection,
+        qh: &QueueHandle<Self>,
+    ) {
+        match event {
+            wl_callback::Event::Done { callback_data } => {
+                let base_surface = &mut state.final_resources().base_surface;
+                base_surface.frame(qh, ());
+                base_surface.commit();
+                println!("{callback_data}");
+            }
+            _ => todo!(),
         }
     }
 }
