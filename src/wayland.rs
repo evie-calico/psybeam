@@ -1,5 +1,6 @@
 use crate::bindings::SurfaceConfig;
-use std::{fs::File, os::unix::io::AsFd};
+use std::io::Write;
+use std::os::unix::io::AsFd;
 use wayland_client::{
     Connection, Dispatch, QueueHandle, delegate_noop,
     protocol::{
@@ -148,22 +149,6 @@ delegate_noop!(Psybeam: ignore wl_shm_pool::WlShmPool);
 delegate_noop!(Psybeam: ignore wl_buffer::WlBuffer);
 delegate_noop!(Psybeam: ignore zwlr_layer_shell_v1::ZwlrLayerShellV1);
 
-fn draw(tmp: &mut File, (buf_x, buf_y): (u32, u32)) {
-    use std::{cmp::min, io::Write};
-    let mut buf = std::io::BufWriter::new(tmp);
-    for y in 0..buf_y {
-        for x in 0..buf_x {
-            let a = 0xFF;
-            let r = min(((buf_x - x) * 0xFF) / buf_x, ((buf_y - y) * 0xFF) / buf_y);
-            let g = min((x * 0xFF) / buf_x, ((buf_y - y) * 0xFF) / buf_y);
-            let b = min(((buf_x - x) * 0xFF) / buf_x, (y * 0xFF) / buf_y);
-            buf.write_all(&[b as u8, g as u8, r as u8, a as u8])
-                .unwrap();
-        }
-    }
-    buf.flush().unwrap();
-}
-
 impl Psybeam {
     fn attempt_init(&mut self, qh: &QueueHandle<Psybeam>) {
         let PsybeamResources::Partial(PsybeamPartial {
@@ -179,9 +164,19 @@ impl Psybeam {
         let width = *width;
         let height = self.config.height;
 
-        let mut file = tempfile::tempfile().unwrap();
-        draw(&mut file, (width, height));
-        let pool = wl_shm.create_pool(file.as_fd(), (width * height * 4) as i32, qh, ());
+        let mut file = std::io::BufWriter::new(tempfile::tempfile().unwrap());
+        let pool_size = width as usize * height as usize * size_of::<u32>();
+
+        let message = "meow, world!";
+
+        for _ in 0..(pool_size / message.len()) {
+            let _ = file.write(message.as_bytes());
+        }
+        for _ in 0..(pool_size % message.len()) {
+            let _ = file.write(&[0]);
+        }
+        let file = file.into_inner().unwrap();
+        let pool = wl_shm.create_pool(file.as_fd(), pool_size as i32, qh, ());
         let buffer = pool.create_buffer(
             0,
             width as i32,
@@ -211,7 +206,7 @@ impl Psybeam {
                 .unwrap_or(self.config.height as i32),
         );
         base_surface.attach(Some(&buffer), 0, 0);
-        let callback = base_surface.frame(qh, ());
+        base_surface.frame(qh, ());
         base_surface.commit();
 
         self.resources = PsybeamResources::Final(PsybeamFinal {
