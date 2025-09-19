@@ -10,6 +10,8 @@ pub struct Psybeam {
     pub running: bool,
     pub resources: wayland::PsybeamResources,
     pub layout: espy::interpreter::Tuple<espy::Value<'static>>,
+    pub swash_cache: cosmic_text::SwashCache,
+    pub font_system: cosmic_text::FontSystem,
 }
 
 impl Psybeam {
@@ -22,41 +24,9 @@ impl Psybeam {
             running: true,
             resources: wayland::PsybeamResources::Partial(wayland::PsybeamPartial::default()),
             layout,
+            swash_cache: cosmic_text::SwashCache::new(),
+            font_system: cosmic_text::FontSystem::new(),
         }
-    }
-
-    pub fn render(&self) -> String {
-        let mut bar = String::new();
-        for widget in self.layout.values() {
-            if widget.downcast_extern::<bindings::SpacerWidget>().is_some() {
-                let _ = write!(bar, "<--> ");
-            } else {
-                let mut draw = |instruction: &espy::Value| {
-                    if let Some(bindings::Label {
-                        text,
-                        red,
-                        green,
-                        blue,
-                        alpha: _,
-                    }) = instruction.downcast_extern()
-                    {
-                        let _ = write!(bar, "\x1B[38;2;{red};{green};{blue}m{text}\x1B[0m ",);
-                    } else {
-                        eprintln!("unrecognized drawing instruction: {instruction:?}");
-                    }
-                };
-                match widget.clone().into_function().unwrap().eval() {
-                    // Unit represents no drawing instructions.
-                    Ok(espy::Value::Unit) => (),
-                    Ok(espy::Value::Tuple(instructions)) => instructions.values().for_each(draw),
-                    Ok(instruction) => draw(&instruction),
-                    Err(e) => {
-                        eprintln!("widget renderer failed: {e:?}");
-                    }
-                }
-            }
-        }
-        bar
     }
 }
 
@@ -144,8 +114,6 @@ fn main() -> anyhow::Result<()> {
         .unwrap();
 
     let mut psybeam = Psybeam::new(surface, layout);
-    let bar = psybeam.render();
-    println!("{bar}");
 
     let connection = Connection::connect_to_env()?;
     let mut event_queue = connection.new_event_queue();

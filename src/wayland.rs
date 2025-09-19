@@ -1,14 +1,12 @@
-use crate::Psybeam;
+use crate::{Psybeam, bindings};
+use cosmic_text::{Attrs, Buffer, Color, Metrics};
 use std::io::Write;
+use std::iter;
 use std::os::unix::io::AsFd;
-use wayland_client::{
-    Connection, Dispatch, QueueHandle, delegate_noop,
-    protocol::{
-        wl_buffer, wl_callback, wl_compositor, wl_output, wl_registry, wl_shm, wl_shm_pool,
-        wl_surface,
-    },
+use wayland_client::protocol::{
+    wl_buffer, wl_callback, wl_compositor, wl_output, wl_registry, wl_shm, wl_shm_pool, wl_surface,
 };
-
+use wayland_client::{Connection, Dispatch, QueueHandle, delegate_noop};
 use wayland_protocols_wlr::layer_shell::v1::client::{
     zwlr_layer_shell_v1::{self, ZwlrLayerShellV1},
     zwlr_layer_surface_v1::{self, ZwlrLayerSurfaceV1},
@@ -79,6 +77,106 @@ impl Psybeam {
         };
         final_resources
     }
+
+    fn draw(&mut self, qh: &QueueHandle<Self>) {
+        let width = self.final_resources().width;
+        let height = self.config.height;
+
+        let mut buffer = Buffer::new(
+            &mut self.font_system,
+            Metrics {
+                font_size: 14.0,
+                line_height: height as f32,
+            },
+        );
+        let mut buffer = buffer.borrow_with(&mut self.font_system);
+        buffer.set_size(Some(width as f32), Some(height as f32));
+        let attrs = Attrs::new();
+        buffer.shape_until_scroll(true);
+
+        let pool_size = width as usize * height as usize * size_of::<u32>();
+        let mut canvas: Box<[u8]> = iter::repeat_n(0, pool_size).collect();
+        let mut cursor = 0;
+
+        for widget in self.layout.values() {
+            if widget.downcast_extern::<bindings::SpacerWidget>().is_some() {
+            } else {
+                let mut draw = |instruction: &espy::Value| {
+                    if let Some(bindings::Label {
+                        text,
+                        red,
+                        green,
+                        blue,
+                        alpha,
+                    }) = instruction.downcast_extern()
+                    {
+                        buffer.set_text(text, &attrs, cosmic_text::Shaping::Advanced);
+                        let mut furthest_right = 0;
+                        buffer.draw(
+                            &mut self.swash_cache,
+                            Color::rgba(*red, *green, *blue, *alpha),
+                            |x, y, w, h, color| {
+                                if color.a() == 0 {
+                                    return;
+                                }
+                                let x = x + cursor;
+                                furthest_right = furthest_right.max(x + w as i32);
+                                for y in y..(y + h as i32) {
+                                    for x in x..(x + w as i32) {
+                                        let pos =
+                                            (x + y * width as i32) as usize * size_of::<u32>();
+                                        if let Some(dest) =
+                                            canvas.get_mut(pos..(pos + size_of::<u32>()))
+                                        {
+                                            let a = color.a();
+
+                                            let encode = |x: u8| (x as u16 * a as u16 / 255) as u8;
+                                            dest[0] = encode(color.b());
+                                            dest[1] = encode(color.g());
+                                            dest[2] = encode(color.r());
+                                            dest[3] = color.a();
+                                        }
+                                    }
+                                }
+                            },
+                        );
+                        cursor = furthest_right;
+                    } else {
+                        eprintln!("unrecognized drawing instruction: {instruction:?}");
+                    }
+                };
+                match widget.clone().into_function().unwrap().eval() {
+                    // Unit represents no drawing instructions.
+                    Ok(espy::Value::Unit) => (),
+                    Ok(espy::Value::Tuple(instructions)) => instructions.values().for_each(draw),
+                    Ok(instruction) => draw(&instruction),
+                    Err(e) => {
+                        eprintln!("widget renderer failed: {e:?}");
+                    }
+                }
+            }
+        }
+
+        let resources = self.final_resources();
+        let base_surface = &mut resources.base_surface;
+        base_surface.frame(qh, ());
+        let mut file = tempfile::tempfile().unwrap();
+        file.write_all(&canvas).unwrap();
+        let pool = resources
+            .wl_shm
+            .create_pool(file.as_fd(), pool_size as i32, qh, ());
+        let buffer = pool.create_buffer(
+            0,
+            width as i32,
+            height as i32,
+            (width * 4) as i32,
+            wl_shm::Format::Argb8888,
+            qh,
+            (),
+        );
+        base_surface.damage(0, 0, width as i32, height as i32);
+        base_surface.attach(Some(&buffer), 0, 0);
+    }
 }
 
 impl Dispatch<wl_registry::WlRegistry, ()> for Psybeam {
@@ -94,7 +192,7 @@ impl Dispatch<wl_registry::WlRegistry, ()> for Psybeam {
             name, interface, ..
         } = event
         {
-            match &interface[..] {
+            match &*interface {
                 "wl_compositor" => {
                     if let Some(mut resources) = state.resources(qh) {
                         let compositor =
@@ -150,32 +248,10 @@ impl Psybeam {
         let width = *width;
         let height = self.config.height;
 
-        let mut file = std::io::BufWriter::new(tempfile::tempfile().unwrap());
-        let pool_size = width as usize * height as usize * size_of::<u32>();
-
-        let message = self.render();
-
-        for _ in 0..(pool_size / message.len()) {
-            let _ = file.write(message.as_bytes());
-        }
-        for _ in 0..(pool_size % message.len()) {
-            let _ = file.write(&[0]);
-        }
-        let file = file.into_inner().unwrap();
-        let pool = wl_shm.create_pool(file.as_fd(), pool_size as i32, qh, ());
-        let buffer = pool.create_buffer(
-            0,
-            width as i32,
-            height as i32,
-            (width * 4) as i32,
-            wl_shm::Format::Argb8888,
-            qh,
-            (),
-        );
         let layer_surface = layer_shell.get_layer_surface(
             base_surface,
             Some(wl_output),
-            zwlr_layer_shell_v1::Layer::Bottom,
+            zwlr_layer_shell_v1::Layer::Top,
             "beam".into(),
             qh,
             (),
@@ -191,7 +267,6 @@ impl Psybeam {
                 .exclusive_height
                 .unwrap_or(self.config.height as i32),
         );
-        base_surface.attach(Some(&buffer), 0, 0);
         base_surface.frame(qh, ());
         base_surface.commit();
 
@@ -262,37 +337,9 @@ impl Dispatch<wl_callback::WlCallback, ()> for Psybeam {
         qh: &QueueHandle<Self>,
     ) {
         if let wl_callback::Event::Done { .. } = event {
-            let height = state.config.height;
-            let message = state.render();
-            let resources = state.final_resources();
-            let base_surface = &mut resources.base_surface;
-            let width = resources.width;
-            base_surface.frame(qh, ());
-            let mut file = std::io::BufWriter::new(tempfile::tempfile().unwrap());
-            let pool_size = width as usize * height as usize * size_of::<u32>();
-
-            for _ in 0..(pool_size / message.len()) {
-                let _ = file.write(message.as_bytes());
-            }
-            for _ in 0..(pool_size % message.len()) {
-                let _ = file.write(&[0]);
-            }
-            let file = file.into_inner().unwrap();
-            let pool = resources
-                .wl_shm
-                .create_pool(file.as_fd(), pool_size as i32, qh, ());
-            let buffer = pool.create_buffer(
-                0,
-                width as i32,
-                height as i32,
-                (width * 4) as i32,
-                wl_shm::Format::Argb8888,
-                qh,
-                (),
-            );
-            base_surface.damage(0, 0, width as i32, height as i32);
-            base_surface.attach(Some(&buffer), 0, 0);
-            base_surface.commit();
+            state.draw(qh);
+            state.final_resources().base_surface.frame(qh, ());
+            state.final_resources().base_surface.commit();
         }
     }
 }

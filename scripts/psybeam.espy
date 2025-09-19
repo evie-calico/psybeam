@@ -198,7 +198,7 @@ let battery = {
 		let capacity = capacity
 			|> string.parse_i64 ()
 			|> option.unwrap ();
-		if capacity > 99 then
+		if capacity > 90 then
 			""
 		else if capacity > 75 then
 			""
@@ -211,6 +211,8 @@ let battery = {
 		end
 	else if status == "Charging" then
 		""
+	else if status == "Full" then
+		""
 	else then
 		status
 	end;
@@ -231,11 +233,9 @@ let clock = {
 		|> label_color palette.red
 };
 
-surface: (
-	height: 32,
-	exclusive_height: 0,
-	anchor: "bottom"
-),
+# Config
+
+surface: height: 32,
 layout: (
 	network,
 
