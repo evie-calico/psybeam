@@ -1,4 +1,6 @@
-use std::{cell::RefCell, rc::Rc};
+use std::{rc::Rc, time::Duration};
+
+use crate::{UserWidget, Widget, WidgetRefreshRate};
 
 #[derive(Debug)]
 pub struct Label {
@@ -30,9 +32,7 @@ impl espy::ExternOwned for Label {
     }
 }
 
-pub struct SpacerWidget;
-
-impl espy::Extern for SpacerWidget {
+impl espy::Extern for Widget {
     fn index<'host>(
         &'host self,
         index: espy::Value<'host>,
@@ -47,128 +47,32 @@ impl espy::Extern for SpacerWidget {
         Some(self)
     }
 
+    fn as_static(&self) -> Option<espy::Value<'static>> {
+        Some(espy::Value::owned(Rc::new(self.clone())))
+    }
+
     fn debug(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        std::write!(f, "psybeam.spacer widget")
+        std::write!(f, "{self:?}")
     }
 }
 
-#[derive(Clone)]
-pub struct SurfaceConfig {
-    /// Allocate this many rows for drawing.
-    pub height: u32,
-    /// Request exclusive residence from the compositor.
-    ///
-    /// This can be used to implement margins,
-    /// or to allow windows to draw over the bar.
-    ///
-    /// Defaults to `height` if not specified.
-    pub exclusive_height: Option<i32>,
-    /// Anchor the bar to the bottom of the output,
-    /// instead of the top.
-    pub bottom: bool,
-}
+impl espy::ExternOwned for Widget {
+    fn index<'host>(
+        self: Rc<Self>,
+        index: espy::Value<'host>,
+    ) -> Result<espy::Value<'host>, espy::Error<'host>> {
+        Err(espy::Error::IndexNotFound {
+            index,
+            container: espy::Value::owned(self),
+        })
+    }
 
-pub struct SurfaceLib(RefCell<SurfaceConfig>);
-
-impl espy::Extern for SurfaceLib {
     fn any(&self) -> Option<&dyn std::any::Any> {
         Some(self)
     }
 
-    fn index<'host>(
-        &'host self,
-        index: espy::Value<'host>,
-    ) -> Result<espy::Value<'host>, espy::Error<'host>> {
-        struct HeightFn;
-        impl espy::ExternFn for HeightFn {
-            fn call<'host>(
-                &'host self,
-                argument: espy::Value<'host>,
-            ) -> Result<espy::Value<'host>, espy::Error<'host>> {
-                argument
-                    .get(0)?
-                    .downcast_extern::<SurfaceLib>()
-                    .ok_or_else(|| "first argument must be surface lib".to_string())
-                    .map_err(|s| espy::Error::Other(s.into()))?
-                    .0
-                    .borrow_mut()
-                    .height = argument.get(1)?.into_i64()? as u32;
-                Ok(().into())
-            }
-        }
-
-        struct ExclusiveHeightFn;
-        impl espy::ExternFn for ExclusiveHeightFn {
-            fn call<'host>(
-                &'host self,
-                argument: espy::Value<'host>,
-            ) -> Result<espy::Value<'host>, espy::Error<'host>> {
-                argument
-                    .get(0)?
-                    .downcast_extern::<SurfaceLib>()
-                    .unwrap()
-                    .0
-                    .borrow_mut()
-                    .exclusive_height = Some(argument.get(1)?.into_i64()? as i32);
-                Ok(().into())
-            }
-        }
-
-        struct TopFn;
-        impl espy::ExternFn for TopFn {
-            fn call<'host>(
-                &'host self,
-                argument: espy::Value<'host>,
-            ) -> Result<espy::Value<'host>, espy::Error<'host>> {
-                argument
-                    .downcast_extern::<SurfaceLib>()
-                    .unwrap()
-                    .0
-                    .borrow_mut()
-                    .bottom = false;
-                Ok(().into())
-            }
-        }
-
-        struct BottomFn;
-        impl espy::ExternFn for BottomFn {
-            fn call<'host>(
-                &'host self,
-                argument: espy::Value<'host>,
-            ) -> Result<espy::Value<'host>, espy::Error<'host>> {
-                argument
-                    .downcast_extern::<SurfaceLib>()
-                    .unwrap()
-                    .0
-                    .borrow_mut()
-                    .bottom = true;
-                Ok(().into())
-            }
-        }
-
-        let index = index.into_str()?;
-        match &*index {
-            "height" => Ok(espy::Function::borrow(&HeightFn)
-                .piped(espy::Value::borrow(self))
-                .into()),
-            "exclusive_height" => Ok(espy::Function::borrow(&ExclusiveHeightFn)
-                .piped(espy::Value::borrow(self))
-                .into()),
-            "top" => Ok(espy::Function::borrow(&TopFn)
-                .piped(espy::Value::borrow(self))
-                .into()),
-            "bottom" => Ok(espy::Function::borrow(&BottomFn)
-                .piped(espy::Value::borrow(self))
-                .into()),
-            _ => Err(espy::Error::IndexNotFound {
-                index: index.into(),
-                container: espy::Value::borrow(self),
-            }),
-        }
-    }
-
     fn debug(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "psybeam.surface module")
+        std::write!(f, "{self:?}")
     }
 }
 
@@ -184,13 +88,18 @@ impl espy::Extern for PsybeamLib {
             "color" => Ok(espy::Value::borrow(&ColorLib)),
             "command" => Ok(espy::Function::borrow(&CommandFn).into()),
             "label_color" => Ok(espy::Function::borrow(&LabelColorFn).into()),
-            "spacer" => Ok(espy::Value::borrow(&SpacerWidget)),
+            "widget" => Ok(espy::Value::borrow(&WidgetLib)),
             _ => Err(espy::Error::IndexNotFound {
                 index: index.into(),
                 container: espy::Value::borrow(self),
             }),
         }
     }
+
+    fn as_static(&self) -> Option<espy::Value<'static>> {
+        Some(espy::Value::borrow(&PsybeamLib))
+    }
+
     fn debug(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "psybeam module")
     }
@@ -229,6 +138,10 @@ impl espy::ExternFn for CommandFn {
         ))
     }
 
+    fn as_static(&self) -> Option<espy::Function<'static>> {
+        Some(espy::Function::borrow(&CommandFn))
+    }
+
     fn debug(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         std::write!(f, "psybeam.command function")
     }
@@ -252,6 +165,11 @@ impl espy::Extern for ColorLib {
             }),
         }
     }
+
+    fn as_static(&self) -> Option<espy::Value<'static>> {
+        Some(espy::Value::borrow(&ColorLib))
+    }
+
     fn debug(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "color module")
     }
@@ -275,6 +193,10 @@ impl espy::ExternFn for ColorHexFn {
                 "expected a string with exactly six characters".into(),
             )),
         }
+    }
+
+    fn as_static(&self) -> Option<espy::Function<'static>> {
+        Some(espy::Function::borrow(&ColorHexFn))
     }
 
     fn debug(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -301,7 +223,172 @@ impl espy::ExternFn for LabelColorFn {
         })))
     }
 
+    fn as_static(&self) -> Option<espy::Function<'static>> {
+        Some(espy::Function::borrow(&LabelColorFn))
+    }
+
     fn debug(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         std::write!(f, "{self:?}")
+    }
+}
+
+#[derive(Debug)]
+struct WidgetLib;
+
+impl espy::Extern for WidgetLib {
+    fn index<'host>(
+        &'host self,
+        index: espy::Value<'host>,
+    ) -> Result<espy::Value<'host>, espy::Error<'host>> {
+        let index = index.into_str()?;
+        match &*index {
+            "new" => Ok(espy::Function::borrow(&WidgetNewFn).into()),
+            "refresh" => Ok(espy::Value::borrow(&WidgetRefreshLib)),
+            "spacer" => Ok(espy::Value::borrow(&Widget::Spacer)),
+            _ => Err(espy::Error::IndexNotFound {
+                index: index.into(),
+                container: espy::Value::borrow(self),
+            }),
+        }
+    }
+
+    fn as_static(&self) -> Option<espy::Value<'static>> {
+        Some(espy::Value::borrow(&WidgetLib))
+    }
+
+    fn debug(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        std::write!(f, "psybeam.widget module")
+    }
+}
+
+#[derive(Debug)]
+struct WidgetRefreshLib;
+
+impl espy::Extern for WidgetRefreshLib {
+    fn index<'host>(
+        &'host self,
+        index: espy::Value<'host>,
+    ) -> Result<espy::Value<'host>, espy::Error<'host>> {
+        let index = index.into_str()?;
+        match &*index {
+            "timer" => Ok(espy::Value::borrow(&WidgetRefreshTimerLib)),
+            _ => Err(espy::Error::IndexNotFound {
+                index: index.into(),
+                container: espy::Value::borrow(self),
+            }),
+        }
+    }
+
+    fn as_static(&self) -> Option<espy::Value<'static>> {
+        Some(espy::Value::borrow(&WidgetRefreshLib))
+    }
+
+    fn debug(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        std::write!(f, "psybeam.widget.refresh module")
+    }
+}
+
+#[derive(Debug)]
+struct WidgetRefreshTimerLib;
+
+impl espy::Extern for WidgetRefreshTimerLib {
+    fn index<'host>(
+        &'host self,
+        index: espy::Value<'host>,
+    ) -> Result<espy::Value<'host>, espy::Error<'host>> {
+        let index = index.into_str()?;
+        match &*index {
+            "s" => Ok(espy::Function::borrow(&WidgetRefreshTimerSecondsFn).into()),
+            "ms" => Ok(espy::Function::borrow(&WidgetRefreshTimerMillisecondsFn).into()),
+            _ => Err(espy::Error::IndexNotFound {
+                index: index.into(),
+                container: espy::Value::borrow(self),
+            }),
+        }
+    }
+
+    fn as_static(&self) -> Option<espy::Value<'static>> {
+        Some(espy::Value::borrow(&WidgetRefreshTimerLib))
+    }
+
+    fn debug(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        std::write!(f, "psybeam.widget.refresh.timer module")
+    }
+}
+
+#[derive(Debug)]
+struct WidgetRefreshTimerSecondsFn;
+
+impl espy::ExternFn for WidgetRefreshTimerSecondsFn {
+    fn call<'host>(
+        &'host self,
+        argument: espy::Value<'host>,
+    ) -> Result<espy::Value<'host>, espy::Error<'host>> {
+        Ok(espy::Value::owned(Rc::new(WidgetRefreshRate::Timer(
+            Duration::from_secs(argument.into_i64()?.try_into()?),
+        ))))
+    }
+
+    fn as_static(&self) -> Option<espy::Function<'static>> {
+        Some(espy::Function::borrow(&WidgetRefreshTimerSecondsFn))
+    }
+}
+
+#[derive(Debug)]
+struct WidgetRefreshTimerMillisecondsFn;
+
+impl espy::ExternFn for WidgetRefreshTimerMillisecondsFn {
+    fn call<'host>(
+        &'host self,
+        argument: espy::Value<'host>,
+    ) -> Result<espy::Value<'host>, espy::Error<'host>> {
+        Ok(espy::Value::owned(Rc::new(WidgetRefreshRate::Timer(
+            Duration::from_millis(argument.into_i64()?.try_into()?),
+        ))))
+    }
+
+    fn as_static(&self) -> Option<espy::Function<'static>> {
+        Some(espy::Function::borrow(&WidgetRefreshTimerMillisecondsFn))
+    }
+}
+
+#[derive(Debug)]
+struct WidgetNewFn;
+
+impl espy::ExternFn for WidgetNewFn {
+    fn call<'host>(
+        &'host self,
+        argument: espy::Value<'host>,
+    ) -> Result<espy::Value<'host>, espy::Error<'host>> {
+        let title = argument.find("title".into())?.into_str()?;
+        let width = argument.find("width".into())?.into_i64()?.try_into()?;
+        let refresh = argument
+            .find("refresh".into())?
+            .downcast_extern::<WidgetRefreshRate>()
+            .ok_or_else(|| espy::Error::Other("expected widget refresh rate".into()))?
+            .clone();
+        let draw = argument
+            .find("draw".into())?
+            .into_function()?
+            .as_static()
+            .ok_or_else(|| {
+                espy::Error::Other(
+                    "expected static draw method (no mutable or external state)".into(),
+                )
+            })?;
+        Ok(espy::Value::owned(Rc::new(Widget::User(UserWidget {
+            title,
+            width,
+            refresh,
+            draw,
+        }))))
+    }
+
+    fn as_static(&self) -> Option<espy::Function<'static>> {
+        Some(espy::Function::borrow(&WidgetNewFn))
+    }
+
+    fn debug(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        std::write!(f, "psybeam.widget.new function")
     }
 }

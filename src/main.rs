@@ -1,24 +1,76 @@
-use std::fmt::Write;
-use std::{env, fs};
+use std::{env, fs, rc::Rc};
 use wayland_client::Connection;
 
 mod bindings;
 mod wayland;
 
+#[derive(Clone)]
+pub struct SurfaceConfig {
+    /// Allocate this many rows for drawing.
+    pub height: u32,
+    /// Request exclusive residence from the compositor.
+    ///
+    /// This can be used to implement margins,
+    /// or to allow windows to draw over the bar.
+    ///
+    /// Defaults to `height` if not specified.
+    pub exclusive_height: Option<i32>,
+    /// Anchor the bar to the bottom of the output,
+    /// instead of the top.
+    pub bottom: bool,
+}
+
+#[derive(Clone, Debug)]
+pub enum WidgetRefreshRate {
+    Timer(std::time::Duration),
+    Framerate,
+}
+
+impl espy::ExternOwned for WidgetRefreshRate {
+    fn index<'host>(
+        self: Rc<Self>,
+        index: espy::Value<'host>,
+    ) -> Result<espy::Value<'host>, espy::Error<'host>> {
+        Err(espy::Error::IndexNotFound {
+            index,
+            container: espy::Value::owned(self),
+        })
+    }
+
+    fn any(&self) -> Option<&dyn std::any::Any> {
+        Some(self)
+    }
+
+    fn debug(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        std::write!(f, "{self:?}")
+    }
+}
+
+#[derive(Clone, Debug)]
+pub enum Widget {
+    Spacer,
+    User(UserWidget),
+}
+
+#[derive(Clone, Debug)]
+pub struct UserWidget {
+    pub title: Rc<str>,
+    pub width: u32,
+    pub refresh: WidgetRefreshRate,
+    pub draw: espy::Function<'static>,
+}
+
 pub struct Psybeam {
-    pub config: bindings::SurfaceConfig,
+    pub config: SurfaceConfig,
     pub running: bool,
     pub resources: wayland::PsybeamResources,
-    pub layout: espy::interpreter::Tuple<espy::Value<'static>>,
+    pub layout: Box<[Widget]>,
     pub swash_cache: cosmic_text::SwashCache,
     pub font_system: cosmic_text::FontSystem,
 }
 
 impl Psybeam {
-    pub fn new(
-        config: bindings::SurfaceConfig,
-        layout: espy::interpreter::Tuple<espy::Value<'static>>,
-    ) -> Self {
+    pub fn new(config: SurfaceConfig, layout: Box<[Widget]>) -> Self {
         Self {
             config,
             running: true,
@@ -76,7 +128,7 @@ fn main() -> anyhow::Result<()> {
         .into_tuple()
         .unwrap();
     let surface = config.find_value("surface").cloned().map_or(
-        bindings::SurfaceConfig {
+        SurfaceConfig {
             height: 32,
             exclusive_height: None,
             bottom: false,
@@ -99,7 +151,7 @@ fn main() -> anyhow::Result<()> {
                     "bottom" => true,
                     _ => todo!(),
                 });
-            bindings::SurfaceConfig {
+            SurfaceConfig {
                 height,
                 exclusive_height,
                 bottom,
@@ -111,7 +163,11 @@ fn main() -> anyhow::Result<()> {
         .unwrap()
         .clone()
         .into_tuple()
-        .unwrap();
+        .unwrap()
+        .values()
+        .cloned()
+        .map(|value| value.downcast_extern::<Widget>().unwrap().clone())
+        .collect::<Box<[Widget]>>();
 
     let mut psybeam = Psybeam::new(surface, layout);
 

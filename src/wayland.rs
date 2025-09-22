@@ -1,4 +1,4 @@
-use crate::{Psybeam, bindings};
+use crate::{Psybeam, Widget, bindings};
 use cosmic_text::{Attrs, Buffer, Color, Metrics};
 use std::io::Write;
 use std::iter;
@@ -98,60 +98,65 @@ impl Psybeam {
         let mut canvas: Box<[u8]> = iter::repeat_n(0, pool_size).collect();
         let mut cursor = 0;
 
-        for widget in self.layout.values() {
-            if widget.downcast_extern::<bindings::SpacerWidget>().is_some() {
-            } else {
-                let mut draw = |instruction: &espy::Value| {
-                    if let Some(bindings::Label {
-                        text,
-                        red,
-                        green,
-                        blue,
-                        alpha,
-                    }) = instruction.downcast_extern()
-                    {
-                        buffer.set_text(text, &attrs, cosmic_text::Shaping::Advanced);
-                        let mut furthest_right = 0;
-                        buffer.draw(
-                            &mut self.swash_cache,
-                            Color::rgba(*red, *green, *blue, *alpha),
-                            |x, y, w, h, color| {
-                                if color.a() == 0 {
-                                    return;
-                                }
-                                let x = x + cursor;
-                                furthest_right = furthest_right.max(x + w as i32);
-                                for y in y..(y + h as i32) {
-                                    for x in x..(x + w as i32) {
-                                        let pos =
-                                            (x + y * width as i32) as usize * size_of::<u32>();
-                                        if let Some(dest) =
-                                            canvas.get_mut(pos..(pos + size_of::<u32>()))
-                                        {
-                                            let a = color.a();
+        for widget in &self.layout {
+            match widget {
+                Widget::Spacer => {}
+                Widget::User(widget) => {
+                    let mut draw = |instruction: &espy::Value| {
+                        if let Some(bindings::Label {
+                            text,
+                            red,
+                            green,
+                            blue,
+                            alpha,
+                        }) = instruction.downcast_extern()
+                        {
+                            buffer.set_text(text, &attrs, cosmic_text::Shaping::Advanced);
+                            let mut furthest_right = 0;
+                            buffer.draw(
+                                &mut self.swash_cache,
+                                Color::rgba(*red, *green, *blue, *alpha),
+                                |x, y, w, h, color| {
+                                    if color.a() == 0 {
+                                        return;
+                                    }
+                                    let x = x + cursor;
+                                    furthest_right = furthest_right.max(x + w as i32);
+                                    for y in y..(y + h as i32) {
+                                        for x in x..(x + w as i32) {
+                                            let pos =
+                                                (x + y * width as i32) as usize * size_of::<u32>();
+                                            if let Some(dest) =
+                                                canvas.get_mut(pos..(pos + size_of::<u32>()))
+                                            {
+                                                let a = color.a();
 
-                                            let encode = |x: u8| (x as u16 * a as u16 / 255) as u8;
-                                            dest[0] = encode(color.b());
-                                            dest[1] = encode(color.g());
-                                            dest[2] = encode(color.r());
-                                            dest[3] = color.a();
+                                                let encode =
+                                                    |x: u8| (x as u16 * a as u16 / 255) as u8;
+                                                dest[0] = encode(color.b());
+                                                dest[1] = encode(color.g());
+                                                dest[2] = encode(color.r());
+                                                dest[3] = color.a();
+                                            }
                                         }
                                     }
-                                }
-                            },
-                        );
-                        cursor = furthest_right;
-                    } else {
-                        eprintln!("unrecognized drawing instruction: {instruction:?}");
-                    }
-                };
-                match widget.clone().into_function().unwrap().eval() {
-                    // Unit represents no drawing instructions.
-                    Ok(espy::Value::Unit) => (),
-                    Ok(espy::Value::Tuple(instructions)) => instructions.values().for_each(draw),
-                    Ok(instruction) => draw(&instruction),
-                    Err(e) => {
-                        eprintln!("widget renderer failed: {e:?}");
+                                },
+                            );
+                            cursor = furthest_right;
+                        } else {
+                            eprintln!("unrecognized drawing instruction: {instruction:?}");
+                        }
+                    };
+                    match widget.draw.clone().eval() {
+                        // Unit represents no drawing instructions.
+                        Ok(espy::Value::Unit) => (),
+                        Ok(espy::Value::Tuple(instructions)) => {
+                            instructions.values().for_each(draw)
+                        }
+                        Ok(instruction) => draw(&instruction),
+                        Err(e) => {
+                            eprintln!("widget renderer failed: {e:?}");
+                        }
                     }
                 }
             }
