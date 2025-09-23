@@ -87,6 +87,7 @@ impl espy::Extern for PsybeamLib {
         match &*index {
             "color" => Ok(espy::Value::borrow(&ColorLib)),
             "command" => Ok(espy::Function::borrow(&CommandFn).into()),
+            "read_to_string" => Ok(espy::Function::borrow(&ReadToStringFn).into()),
             "label_color" => Ok(espy::Function::borrow(&LabelColorFn).into()),
             "widget" => Ok(espy::Value::borrow(&WidgetLib)),
             _ => Err(espy::Error::IndexNotFound {
@@ -144,6 +145,27 @@ impl espy::ExternFn for CommandFn {
 
     fn debug(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         std::write!(f, "psybeam.command function")
+    }
+}
+
+struct ReadToStringFn;
+
+impl espy::ExternFn for ReadToStringFn {
+    fn call<'host>(
+        &'host self,
+        argument: espy::Value<'host>,
+    ) -> Result<espy::Value<'host>, espy::Error<'host>> {
+        Ok(espy::Value::String(
+            std::fs::read_to_string(&*argument.into_str()?)?.into(),
+        ))
+    }
+
+    fn as_static(&self) -> Option<espy::Function<'static>> {
+        Some(espy::Function::borrow(&ReadToStringFn))
+    }
+
+    fn debug(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        std::write!(f, "psybeam.read_to_string function")
     }
 }
 

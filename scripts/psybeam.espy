@@ -2,12 +2,6 @@
 
 with { std, psybeam };
 
-let read_file = {
-	let { command } = psybeam;
-	with path;
-	(command "cat", path).stdout
-};
-
 let palette = {
 	let color = psybeam.color.hex;
 
@@ -50,10 +44,9 @@ let cpu = psybeam.widget.new
 	width: 64,
 	refresh: (psybeam.widget.refresh.timer.s 5),
 	draw: {
-		let { command, label_color } = psybeam;
+		let { command, label_color, read_to_string } = psybeam;
 		let { string, iter, option } = std;
 		let palette = palette;
-		let read_file = read_file;
 
 		# cpu usage involves diffing the current and last known values of /proc/stat
 		let last_timing = (
@@ -63,7 +56,7 @@ let cpu = psybeam.widget.new
 
 		with _widget;
 
-		let timings = read_file "/proc/stat"
+		let timings = read_to_string "/proc/stat"
 			# the first line of /proc/stat is total cpu time...
 			|> string.split "\n"
 			|> iter.reduce_once ()
@@ -103,7 +96,7 @@ let cpu = psybeam.widget.new
 		# set last_timing = current_timing;
 
 		# this file is a comma-seperated list of minus-separated ranges of cpus.
-		let present_cpus = read_file "/sys/devices/system/cpu/present";
+		let present_cpus = read_to_string "/sys/devices/system/cpu/present";
 		let cores = present_cpus
 			|> string.trim_whitespace ()
 			|> string.split ","
@@ -141,14 +134,13 @@ let memory = psybeam.widget.new
 	width: 64,
 	refresh: (psybeam.widget.refresh.timer.s 5),
 	draw: {
-		let { command, label_color } = psybeam;
+		let { command, label_color, read_to_string } = psybeam;
 		let { string, iter, option } = std;
 		let palette = palette;
-		let read_file = read_file;
 
 		with _widget;
 
-		let meminfo = read_file "/proc/meminfo";
+		let meminfo = read_to_string "/proc/meminfo";
 		# TODO: use filter/find instead of fold.
 		let { available, total } = meminfo
 			|> string.split "\n"
@@ -187,55 +179,61 @@ let memory = psybeam.widget.new
 			|> label_color palette.white
 	};
 
-let battery = psybeam.widget.new
-	title: "Battery",
-	width: 64,
-	refresh: (psybeam.widget.refresh.timer.s 60),
-	draw: {
-		let { command, label_color } = psybeam;
-		let { string, iter, option } = std;
-		let palette = palette;
-		let read_file = read_file;
+let battery = {
+	let psybeam = psybeam;
+	let std = std;
+	let palette = palette;
+	with power_supply;
 
-		with _widget;
+	psybeam.widget.new
+		title: "Battery",
+		width: 64,
+		refresh: (psybeam.widget.refresh.timer.s 60),
+		draw: {
+			let { command, label_color, read_to_string } = psybeam;
+			let { string, iter, option } = std;
+			let palette = palette;
+			let power_supply = power_supply;
 
-		let property = {
-			# run `ls /sys/class/power_supply` to see possible batteries.
-			let battery = "BAT0";
-			let string = string;
-			with property;
-			string.concat "/sys/class/power_supply/", battery, "/", property
-		};
-		let capacity = read_file (property "capacity")
-			|> string.trim_whitespace ();
-		let status = read_file (property "status")
-			|> string.trim_whitespace ();
-		let icon = if status == "Discharging" then
-			let capacity = capacity
-				|> string.parse_i64 ()
-				|> option.unwrap ();
-			if capacity > 90 then
+			with _widget;
+
+			let property = {
+				let string = string;
+				let power_supply = power_supply;
+				with property;
+				string.concat "/sys/class/power_supply/", power_supply, "/", property
+			};
+			let capacity = read_to_string (property "capacity")
+				|> string.trim_whitespace ();
+			let status = read_to_string (property "status")
+				|> string.trim_whitespace ();
+			let icon = if status == "Discharging" then
+				let capacity = capacity
+					|> string.parse_i64 ()
+					|> option.unwrap ();
+				if capacity > 90 then
+					""
+				else if capacity > 75 then
+					""
+				else if capacity > 50 then
+					""
+				else if capacity > 25 then
+					""
+				else then
+					""
+				end
+			else if status == "Charging" then
+				""
+			else if status == "Full" then
 				""
-			else if capacity > 75 then
-				""
-			else if capacity > 50 then
-				""
-			else if capacity > 25 then
-				""
 			else then
-				""
-			end
-		else if status == "Charging" then
-			""
-		else if status == "Full" then
-			""
-		else then
-			status
-		end;
+				status
+			end;
 
-		string.concat capacity, "% ", icon
-			|> label_color palette.pink
-	};
+			string.concat capacity, "% ", icon
+				|> label_color palette.pink
+		}
+};
 
 let clock = psybeam.widget.new
 	title: "Clock",
@@ -265,7 +263,8 @@ layout: (
 
 	cpu,
 	memory,
-	battery,
+	# run `ls /sys/class/power_supply` to see possible batteries.
+	(battery "BAT1"),
 
 	psybeam.widget.spacer,
 
