@@ -192,25 +192,22 @@ let battery = {
 				|> string.trim_whitespace ();
 			let status = read_to_string (property "status")
 				|> string.trim_whitespace ();
-			let icon = if status == "Discharging" then
+			let icon =
+				if status == "Discharging"
+				or status == "Not charging"
+				or status == "Full"
+			then
 				let capacity = capacity
 					|> string.parse_i64 ()
 					|> option.unwrap ();
-				if capacity > 90 then
-					""
-				else if capacity > 75 then
-					""
-				else if capacity > 50 then
-					""
-				else if capacity > 25 then
-					""
-				else then
-					""
-				end
+
+				if capacity > 90 then "" else
+				if capacity > 75 then "" else
+				if capacity > 50 then "" else
+				if capacity > 25 then "" else
+				                 then "" end
 			else if status == "Charging" then
 				""
-			else if status == "Full" then
-				""
 			else then
 				status
 			end;
