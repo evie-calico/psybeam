@@ -1,6 +1,8 @@
 #!/usr/bin/env psybeam
 
 with { std, psybeam };
+let { string, option, iter } = std;
+let { command, label_color, read_to_string } = psybeam;
 
 let palette = {
 	let color = psybeam.color.hex;
@@ -19,9 +21,7 @@ let network = psybeam.widget.new
 	width: 192,
 	refresh: (psybeam.widget.refresh.timer.s 10),
 	draw: {
-		let { string, iter, option } = std;
-		let { command, label_color } = psybeam;
-		let* palette;
+		let^ palette, string, command, label_color;
 
 		with _widget;
 
@@ -44,9 +44,7 @@ let cpu = psybeam.widget.new
 	width: 64,
 	refresh: (psybeam.widget.refresh.timer.s 5),
 	draw: {
-		let { command, label_color, read_to_string } = psybeam;
-		let { string, iter, option } = std;
-		let* palette;
+		let^ palette, string, iter, option, label_color, read_to_string;
 
 		# cpu usage involves diffing the current and last known values of /proc/stat
 		let last_timing = (
@@ -79,7 +77,7 @@ let cpu = psybeam.widget.new
 			total: (
 				timings
 					|> iter.map {
-						let* string, option;
+						let^ string, option;
 						with i;
 						string.parse_i64 i |> option.unwrap()
 					}
@@ -100,7 +98,7 @@ let cpu = psybeam.widget.new
 			|> string.trim_whitespace ()
 			|> string.split ","
 			|> iter.map {
-				let* iter, string, option;
+				let^ iter, string, option;
 
 				with range;
 
@@ -131,9 +129,7 @@ let memory = psybeam.widget.new
 	width: 64,
 	refresh: (psybeam.widget.refresh.timer.s 5),
 	draw: {
-		let { command, label_color, read_to_string } = psybeam;
-		let { string, iter, option } = std;
-		let* palette;
+		let^ palette, string, iter, option, label_color, read_to_string;
 
 		with _widget;
 
@@ -142,7 +138,7 @@ let memory = psybeam.widget.new
 		let { available, total } = meminfo
 			|> string.split "\n"
 			|> iter.fold (available: (Option String).None, total: (Option String).None), {
-				let* string, iter, option;
+				let^ string, iter, option;
 				with ({ available, total }, line);
 
 				# TODO: this could be better expressed as iter.next
@@ -175,7 +171,7 @@ let memory = psybeam.widget.new
 	};
 
 let battery = {
-	let* psybeam, std, palette;
+	let^ palette, string, iter, option, label_color, read_to_string, psybeam;
 	with power_supply;
 
 	psybeam.widget.new
@@ -183,14 +179,12 @@ let battery = {
 		width: 64,
 		refresh: (psybeam.widget.refresh.timer.s 60),
 		draw: {
-			let { command, label_color, read_to_string } = psybeam;
-			let { string, iter, option } = std;
-			let* palette, power_supply;
+			let^ power_supply, palette, string, iter, option, label_color, read_to_string;
 
 			with _widget;
 
 			let property = {
-				let* string, power_supply;
+				let^ string, power_supply;
 				with property;
 				string.concat "/sys/class/power_supply/", power_supply, "/", property
 			};
@@ -231,9 +225,7 @@ let clock = psybeam.widget.new
 	width: 64,
 	refresh: (psybeam.widget.refresh.timer.s 60),
 	draw: {
-		let { command, label_color } = psybeam;
-		let { iter, string, option } = std;
-		let* palette;
+		let^ palette, string, command, label_color;
 
 		with _widget;
 
