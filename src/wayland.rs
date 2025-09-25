@@ -7,6 +7,7 @@ use wayland_client::protocol::{
     wl_buffer, wl_callback, wl_compositor, wl_output, wl_registry, wl_shm, wl_shm_pool, wl_surface,
 };
 use wayland_client::{Connection, Dispatch, QueueHandle, delegate_noop};
+use wayland_protocols::xdg::xdg_output::zv1::client::{zxdg_output_manager_v1, zxdg_output_v1};
 use wayland_protocols_wlr::layer_shell::v1::client::{
     zwlr_layer_shell_v1::{self, ZwlrLayerShellV1},
     zwlr_layer_surface_v1::{self, ZwlrLayerSurfaceV1},
@@ -18,6 +19,7 @@ pub struct PsybeamPartial {
     wl_shm: Option<wl_shm::WlShm>,
     base_surface: Option<wl_surface::WlSurface>,
     layer_shell: Option<ZwlrLayerShellV1>,
+    output_manager: Option<zxdg_output_manager_v1::ZxdgOutputManagerV1>,
     width: Option<u32>,
 }
 
@@ -96,11 +98,18 @@ impl Psybeam {
 
         let pool_size = width as usize * height as usize * size_of::<u32>();
         let mut canvas: Box<[u8]> = iter::repeat_n(0, pool_size).collect();
-        let mut cursor = 0;
-
+        let mut width_usage = 0;
+        let mut spacer_count = 0;
         for widget in &self.layout {
             match widget {
-                Widget::Spacer => {}
+                Widget::Spacer => spacer_count += 1,
+                Widget::User(widget) => width_usage += widget.width,
+            }
+        }
+
+        self.layout.iter().fold(0, |cursor, widget| {
+            match widget {
+                Widget::Spacer => cursor + (width - width_usage) / spacer_count,
                 Widget::User(widget) => {
                     let mut draw = |instruction: &espy::Value| {
                         if let Some(bindings::Label {
@@ -112,7 +121,6 @@ impl Psybeam {
                         }) = instruction.downcast_extern()
                         {
                             buffer.set_text(text, &attrs, cosmic_text::Shaping::Advanced);
-                            let mut furthest_right = 0;
                             buffer.draw(
                                 &mut self.swash_cache,
                                 Color::rgba(*red, *green, *blue, *alpha),
@@ -120,8 +128,7 @@ impl Psybeam {
                                     if color.a() == 0 {
                                         return;
                                     }
-                                    let x = x + cursor;
-                                    furthest_right = furthest_right.max(x + w as i32);
+                                    let x = x + cursor as i32;
                                     for y in y..(y + h as i32) {
                                         for x in x..(x + w as i32) {
                                             let pos =
@@ -142,7 +149,6 @@ impl Psybeam {
                                     }
                                 },
                             );
-                            cursor = furthest_right;
                         } else {
                             eprintln!("unrecognized drawing instruction: {instruction:?}");
                         }
@@ -158,9 +164,10 @@ impl Psybeam {
                             eprintln!("widget renderer failed: {e:?}");
                         }
                     }
+                    cursor + widget.width
                 }
             }
-        }
+        });
 
         let resources = self.final_resources();
         let base_surface = &mut resources.base_surface;
@@ -224,19 +231,32 @@ impl Dispatch<wl_registry::WlRegistry, ()> for Psybeam {
                         resources.layer_shell = Some(layer_shell);
                     }
                 }
+                "zxdg_output_manager_v1" => {
+                    if let Some(mut resources) = state.resources(qh) {
+                        let output_manager = registry
+                            .bind::<zxdg_output_manager_v1::ZxdgOutputManagerV1, _, _>(
+                                name,
+                                1,
+                                qh,
+                                (),
+                            );
+                        resources.output_manager = Some(output_manager);
+                    }
+                }
                 _ => {}
             }
         }
     }
 }
 
-// Ignore events from these object types in this example.
 delegate_noop!(Psybeam: ignore wl_compositor::WlCompositor);
 delegate_noop!(Psybeam: ignore wl_surface::WlSurface);
 delegate_noop!(Psybeam: ignore wl_shm::WlShm);
 delegate_noop!(Psybeam: ignore wl_shm_pool::WlShmPool);
 delegate_noop!(Psybeam: ignore wl_buffer::WlBuffer);
+delegate_noop!(Psybeam: ignore wl_output::WlOutput);
 delegate_noop!(Psybeam: ignore zwlr_layer_shell_v1::ZwlrLayerShellV1);
+delegate_noop!(Psybeam: ignore zxdg_output_manager_v1::ZxdgOutputManagerV1);
 
 impl Psybeam {
     fn attempt_init(&mut self, qh: &QueueHandle<Psybeam>) {
@@ -246,8 +266,17 @@ impl Psybeam {
             base_surface: Some(base_surface),
             layer_shell: Some(layer_shell),
             width: Some(width),
+            ..
         }) = &self.resources
         else {
+            if let PsybeamResources::Partial(PsybeamPartial {
+                wl_output: Some(wl_output),
+                output_manager: Some(output_manager),
+                ..
+            }) = &self.resources
+            {
+                output_manager.get_xdg_output(wl_output, qh, ());
+            }
             return;
         };
         let width = *width;
@@ -256,7 +285,7 @@ impl Psybeam {
         let layer_surface = layer_shell.get_layer_surface(
             base_surface,
             Some(wl_output),
-            zwlr_layer_shell_v1::Layer::Top,
+            zwlr_layer_shell_v1::Layer::Bottom,
             "beam".into(),
             qh,
             (),
@@ -312,17 +341,16 @@ impl Dispatch<ZwlrLayerSurfaceV1, ()> for Psybeam {
     }
 }
 
-impl Dispatch<wl_output::WlOutput, ()> for Psybeam {
+impl Dispatch<zxdg_output_v1::ZxdgOutputV1, ()> for Psybeam {
     fn event(
         state: &mut Self,
-        _: &wl_output::WlOutput,
-        event: wl_output::Event,
+        _: &zxdg_output_v1::ZxdgOutputV1,
+        event: zxdg_output_v1::Event,
         _: &(),
         _: &Connection,
         qh: &QueueHandle<Self>,
     ) {
-        // TODO: scale
-        if let wl_output::Event::Mode { width, .. } = event {
+        if let zxdg_output_v1::Event::LogicalSize { width, .. } = event {
             if let Some(mut resources) = state.resources(qh) {
                 resources.width = Some(width as u32);
             } else {
