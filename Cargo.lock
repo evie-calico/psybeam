@@ -103,7 +103,7 @@ dependencies = [
 [[package]]
 name = "espy"
 version = "0.1.0"
-source = "git+ssh://git@github.com/evie-calico/espy#8ed9418a57d15466b6e071140a988f6468d5e388"
+source = "git+ssh://git@github.com/evie-calico/espy#60eddbaea74eae436ca0ec1570486398b712680f"
 dependencies = [
  "espy-ears",
  "espy-eyes",
@@ -114,7 +114,7 @@ dependencies = [
 [[package]]
 name = "espy-ears"
 version = "0.1.0"
-source = "git+ssh://git@github.com/evie-calico/espy#8ed9418a57d15466b6e071140a988f6468d5e388"
+source = "git+ssh://git@github.com/evie-calico/espy#60eddbaea74eae436ca0ec1570486398b712680f"
 dependencies = [
  "dst-factory",
  "espy-eyes",
@@ -123,17 +123,17 @@ dependencies = [
 [[package]]
 name = "espy-eyes"
 version = "0.1.0"
-source = "git+ssh://git@github.com/evie-calico/espy#8ed9418a57d15466b6e071140a988f6468d5e388"
+source = "git+ssh://git@github.com/evie-calico/espy#60eddbaea74eae436ca0ec1570486398b712680f"
 
 [[package]]
 name = "espy-heart"
 version = "0.1.0"
-source = "git+ssh://git@github.com/evie-calico/espy#8ed9418a57d15466b6e071140a988f6468d5e388"
+source = "git+ssh://git@github.com/evie-calico/espy#60eddbaea74eae436ca0ec1570486398b712680f"
 
 [[package]]
 name = "espy-paws"
 version = "0.1.0"
-source = "git+ssh://git@github.com/evie-calico/espy#8ed9418a57d15466b6e071140a988f6468d5e388"
+source = "git+ssh://git@github.com/evie-calico/espy#60eddbaea74eae436ca0ec1570486398b712680f"
 dependencies = [
  "espy-heart",
 ]
@@ -141,7 +141,7 @@ dependencies = [
 [[package]]
 name = "espy-tail"
 version = "0.1.0"
-source = "git+ssh://git@github.com/evie-calico/espy#8ed9418a57d15466b6e071140a988f6468d5e388"
+source = "git+ssh://git@github.com/evie-calico/espy#60eddbaea74eae436ca0ec1570486398b712680f"
 dependencies = [
  "espy-ears",
  "espy-eyes",
@@ -151,7 +151,7 @@ dependencies = [
 [[package]]
 name = "espystandard"
 version = "0.1.0"
-source = "git+ssh://git@github.com/evie-calico/espy#8ed9418a57d15466b6e071140a988f6468d5e388"
+source = "git+ssh://git@github.com/evie-calico/espy#60eddbaea74eae436ca0ec1570486398b712680f"
 dependencies = [
  "espy-paws",
 ]
@@ -238,9 +238,9 @@ checksum = "34080505efa8e45a4b816c349525ebe327ceaa8559756f0356cba97ef3bf7432"
 
 [[package]]
 name = "memchr"
-version = "2.7.5"
+version = "2.7.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "32a282da65faaf38286cf3be983213fcf1d2e2a58700e808f83f4ea9a4804bc0"
+checksum = "f52b00d39961fc5b2736ea853c9cc86238e165017a493d1d5c8eac6bdc4cc273"
 
 [[package]]
 name = "memmap2"
@@ -632,9 +632,9 @@ checksum = "45e46c0661abb7180e7b9c281db115305d49ca1709ab8242adf09666d2173c65"
 
 [[package]]
 name = "windows-sys"
-version = "0.61.0"
+version = "0.61.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e201184e40b2ede64bc2ea34968b28e33622acdbbf37104f0e4a33f7abe657aa"
+checksum = "6f109e41dd4a3c848907eb83d5a42ea98b3769495597450cf6d153507b166f0f"
 dependencies = [
  "windows-link",
 ]

@@ -26,26 +26,6 @@ pub enum WidgetRefreshRate {
     Framerate,
 }
 
-impl espy::ExternOwned for WidgetRefreshRate {
-    fn index<'host>(
-        self: Rc<Self>,
-        index: espy::Value<'host>,
-    ) -> Result<espy::Value<'host>, espy::Error<'host>> {
-        Err(espy::Error::IndexNotFound {
-            index,
-            container: espy::Value::owned(self),
-        })
-    }
-
-    fn any(&self) -> Option<&dyn std::any::Any> {
-        Some(self)
-    }
-
-    fn debug(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        std::write!(f, "{self:?}")
-    }
-}
-
 #[derive(Clone, Debug)]
 pub enum Widget {
     Spacer,
@@ -82,37 +62,15 @@ impl Psybeam {
     }
 }
 
-struct Libs {
-    std: espystandard::StdLib,
-    psybeam: bindings::PsybeamLib,
-}
-
-impl espy::Extern for Libs {
-    fn index<'host>(
-        &'host self,
-        index: espy::Value<'host>,
-    ) -> Result<espy::Value<'host>, espy::Error<'host>> {
-        let index = index.into_str()?;
-        match &*index {
-            "std" => Ok(espy::Value::borrow(&self.std)),
-            "psybeam" => Ok(espy::Value::borrow(&self.psybeam)),
-            _ => Err(espy::Error::IndexNotFound {
-                index: index.into(),
-                container: espy::Value::borrow(self),
-            }),
-        }
-    }
-    fn debug(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "psybeam libraries")
+espy::extern_impl! {
+    #[espy(debug = "psybeam libraries")]
+    struct Libs {
+        std: espy::Value::borrow(&espystandard::Lib),
+        psybeam: espy::Value::borrow(&bindings::Lib),
     }
 }
 
 fn main() -> anyhow::Result<()> {
-    static LIBS: Libs = Libs {
-        std: espystandard::StdLib,
-        psybeam: bindings::PsybeamLib,
-    };
-
     let source = fs::read_to_string(
         env::args()
             .nth(1)
@@ -122,7 +80,7 @@ fn main() -> anyhow::Result<()> {
     let program = espy::Program::try_from(source.as_str()).unwrap();
     let function = program.eval().unwrap().into_function().unwrap();
     let config = function
-        .piped(espy::Value::borrow(&LIBS))
+        .piped(espy::Value::borrow(&Libs))
         .eval()
         .unwrap()
         .into_tuple()
@@ -165,7 +123,6 @@ fn main() -> anyhow::Result<()> {
         .into_tuple()
         .unwrap()
         .values()
-        .cloned()
         .map(|value| value.downcast_extern::<Widget>().unwrap().clone())
         .collect::<Box<[Widget]>>();
 
