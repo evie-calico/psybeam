@@ -106,12 +106,10 @@ let cpu = psybeam.widget.new
 					|> string.split "-"
 					|> iter.map string.parse_i64
 					|> iter.map option.unwrap;
-				# TODO: another use for a dedicated next function. or maybe `collect` into a tuple.
-				let first = range_iter
-					|> iter.reduce_once ()
+				let (first, range_iter) = range_iter
+					|> iter.next ()
 					|> option.unwrap ();
 				let last = range_iter
-					|> iter.skip 1
 					|> iter.reduce_once ()
 					# If last is absent, treat the range as `first-first`
 					|> option.unwrap_or first;
@@ -133,33 +131,41 @@ let memory = psybeam.widget.new
 
 		with _widget;
 
-		let meminfo = read_to_string "/proc/meminfo";
-		# TODO: use filter/find instead of fold.
-		let { available, total } = meminfo
+		let meminfo = read_to_string "/proc/meminfo"
 			|> string.split "\n"
-			|> iter.fold (available: (Option String).None, total: (Option String).None), {
+			# TODO: These option.unwraps could be replaced with a filter_map & maybe monad
+			|> iter.map {
 				let^ string, iter, option;
-				with ({ available, total }, line);
-
-				# TODO: this could be better expressed as iter.next
+				with line;
 				let label = string.split_whitespace line
-					|> iter.reduce_once ();
+					|> iter.reduce_once ()
+					|> option.unwrap ();
 				let value = string.split_whitespace line
 					|> iter.skip 1
-					|> iter.reduce_once();
-				if label == ((Option String).Some "MemTotal:") then
-					available: available, total: value
-				else if label == ((Option String).Some "MemAvailable:") then
-					available: value, total: total
-				else then
-					available: available, total: total
-				end
+					|> iter.reduce_once ()
+					|> option.unwrap ();
+				label, value
 			};
-		let total = total
+
+		let get_meminfo = {
+			let^ iter, meminfo;
+			with label;
+			iter.find_map meminfo, {
+				let^ label;
+				with (candidate, value);
+				if candidate == label then
+					(Option String).Some value
+				else then
+					(Option String).None ()
+				end
+			}
+		};
+
+		let available = get_meminfo "MemAvailable:"
 			|> option.unwrap ()
 			|> string.parse_i64 ()
 			|> option.unwrap();
-		let available = available
+		let total = get_meminfo "MemTotal:"
 			|> option.unwrap ()
 			|> string.parse_i64 ()
 			|> option.unwrap();

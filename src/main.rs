@@ -71,12 +71,32 @@ espy::extern_impl! {
 }
 
 fn main() -> anyhow::Result<()> {
-    let source = fs::read_to_string(
-        env::args()
-            .nth(1)
-            .ok_or_else(|| anyhow::anyhow!("expected one argument"))?,
-    )?;
+    let path = env::args()
+        .nth(1)
+        .ok_or_else(|| anyhow::anyhow!("expected one argument"))?;
+    let source = fs::read_to_string(&path)?;
     // TODO: espy Errors need to implement Error.
+    // TODO: shortcut function to skip lexer?
+    let ast = espy::parser::Block::new(&mut espy::lexer::Lexer::from(source.as_str()).peekable());
+    espy::diagnostics::for_each(&source, &ast, |error| {
+        for comment in [error.primary]
+            .into_iter()
+            .chain(error.secondary.into_iter())
+        {
+            eprintln!("error: {}", comment.message);
+            if let Some((first, last)) = comment.range {
+                let snippet = espy::diagnostics::expand_to_snippet(first, last, &source);
+                let ((line, column), (_, _)) =
+                    espy::diagnostics::find_location(first, last, &source);
+                eprintln!("  |> {path}:{line}:{column}");
+                eprintln!("{snippet}");
+            } else {
+                eprintln!("  |> {path}");
+            }
+            eprintln!();
+        }
+    });
+
     let program = espy::Program::try_from(source.as_str()).unwrap();
     let function = program.eval().unwrap().into_function().unwrap();
     let config = function
